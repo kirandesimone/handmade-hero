@@ -1,5 +1,6 @@
 #include "handmade.h"
 #include "win32_handmade.h"
+#include "win32_wasapi.h"
 
 // Globals
 static bool g_running;
@@ -51,54 +52,38 @@ win32_process_keyboard_event(GameButtonState &button, bool is_down)
     ++button.half_transition_state;
 }
 
-// may want to set our own samples_per_sec and buffer size later
 static void
-win32_audio_init(uint32_t samples_per_sec_, uint32_t buffer_size)
+win32_debug_draw_audio_frame(uint32_t frame_pixel_col, int32_t top, int32_t bottom)
 {
-    // Needed for COM bullshit and putting audio on a diff thread still needed
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    HRESULT result {};
-    // Get enumerator for all endpoints (devices)
-    IMMDeviceEnumerator *device_enumerator = nullptr;
+    uint8_t *pixel_addr = ((uint8_t*)g_back_buffer.bitmap_mem + // base
+        (frame_pixel_col * g_back_buffer.bytes_per_pixel) + // column
+        (top * g_back_buffer.bitmap_pitch)); // row
 
-    result = CoCreateInstance(
-        __uuidof(MMDeviceEnumerator), NULL,
-        CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
-        (void**)&device_enumerator);
-
-    // TODO: Error check result here
-    if(SUCCEEDED(result)) {
-        IMMDevice *endpoint = nullptr;
-        result = device_enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &endpoint);
-        device_enumerator->Release();
-
-        result = endpoint->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&g_audio.audio_client);
-        endpoint->Release();
-
-        result = g_audio.audio_client->GetMixFormat(&g_audio.wave_fmt);
-        WAVEFORMATEXTENSIBLE *full_fmt = (WAVEFORMATEXTENSIBLE*)g_audio.wave_fmt;
-        if (full_fmt->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
-            OutputDebugString("Float");
-        }
-        // looking for 480 samples/10msec
-        g_audio.audio_client->Initialize(
-            AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-            buffer_size, 0, g_audio.wave_fmt, NULL);
-
-        result = g_audio.audio_client->GetBufferSize(&g_audio.frame_capacity);
-        result = g_audio.audio_client->GetService(__uuidof(IAudioRenderClient), (void**)&g_audio.render_client);
+    for (int32_t pixel_index {top}; pixel_index < bottom; ++pixel_index) {
+        uint32_t *pixel = (uint32_t*)pixel_addr;
+        *pixel = 0xFFFFFFFF;
+        pixel_addr += g_back_buffer.bitmap_pitch;
     }
+}
 
-    /*
-    wave_fmt.wFormatTag = WAVE_FORMAT_PCM;
-    wave_fmt.nChannels = 2;
-    wave_fmt.wBitsPerSample = 16;
-    wave_fmt.cbSize = 0;
-    wave_fmt.nBlockAlign = (wave_fmt.wBitsPerSample * wave_fmt.nChannels) / 8;
-    wave_fmt.nSamplesPerSec = samples_per_sec;
-    wave_fmt.nAvgBytesPerSec = wave_fmt.nSamplesPerSec * wave_fmt.nBlockAlign;
-    */
+static void
+win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
+    GameSoundOutput &sound_output, float target_seconds_per_frame)
+{
+    uint32_t ypad = 16;
+    uint32_t xpad = 16;
+
+    uint32_t top = ypad;
+    uint32_t bottom = g_back_buffer.bitmap_height - ypad;
+    // audio frames to pixels ratio to map into back_buffer
+    float coefficient = (float)g_back_buffer.bitmap_width / g_audio.buffer_frame_capacity;
+    for (uint32_t play_cursor_index {};
+        play_cursor_index < play_cursors_count;
+        ++play_cursor_index)
+    {
+        uint32_t frame_pixel_col= (uint32_t)(coefficient * play_cursors[play_cursor_index]);
+        win32_debug_draw_audio_frame(frame_pixel_col, top, bottom);
+    }
 }
 
 static Win32WinDimensions
@@ -204,9 +189,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
     QueryPerformanceFrequency(&g_performance_freq);
 
     // TODO: Need to query monitor refresh rate through Windows
-    uint32_t monitor_refresh_hz = 60;
-    uint32_t game_refresh_hz = monitor_refresh_hz / 2;
-    float target_seconds_per_frame = 1.0f / game_refresh_hz;
+    constexpr uint32_t monitor_refresh_hz = 60;
+    constexpr uint32_t game_refresh_hz = monitor_refresh_hz / 2;
+    constexpr float target_seconds_per_frame = 1.0f / game_refresh_hz;
 
     if (RegisterClass(&window_class)) {
         HWND window_handle = CreateWindowEx(
@@ -215,21 +200,23 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_audio_init(0, 100000);
-            g_audio.audio_client->Start();
+            win32_audio_init(g_audio, 0, 700000);
+            g_audio.client->Start();
             g_running = true;
+            uint32_t debug_play_cursor_index = 0;
+            uint32_t debug_play_cursors[15] {};
 
             // NOTE: Might have to move if we ever allow audio endpoint to change
             uint8_t channel_count = static_cast<uint8_t>(g_audio.wave_fmt->nChannels);
             GameSoundOutput sound_output {};
             sound_output.channel_count = channel_count;
             sound_output.tone_hz = 256;
-            sound_output.running_sample_index = 0;
+            sound_output.running_frame_index = 0;
             sound_output.volume = 0.3f;
             sound_output.samples_per_sec = g_audio.wave_fmt->nSamplesPerSec;
 
             // Memory allocation
-            void *starting_address = 0;
+            void *starting_address = NULL;
 #ifdef BUILD_INTERNAL
             // we always want the memory to start here for dev builds
             starting_address = reinterpret_cast<void *>(TEBIBYTES(2));
@@ -237,6 +224,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             constexpr uint64_t persistent_mem_size = MEBIBYTES(64);
             constexpr uint64_t transient_mem_size = GIBIBYTES(4);
             constexpr uint64_t total_mem_size = persistent_mem_size + transient_mem_size;
+
             GameMemory memory {};
             memory.persistent_storage_size = persistent_mem_size;
             memory.transient_storage_size = transient_mem_size;
@@ -305,13 +293,15 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     }
                 }
 
-                uint32_t padding;
-                g_audio.audio_client->GetCurrentPadding(&padding);
-
-                uint32_t available_frames = g_audio.frame_capacity - padding;
+                // AUDIO
+                uint32_t padding {};
+                uint32_t available_frames {};
+                g_audio.client->GetCurrentPadding(&padding);
+                available_frames = g_audio.buffer_frame_capacity - padding;
                 sound_output.available_frames = available_frames;
                 g_audio.render_client->GetBuffer(available_frames, &sound_output.buffer);
 
+                // RENDERING
                 BackgroundScreenBuffer buffer {};
                 buffer.bitmap_mem = g_back_buffer.bitmap_mem;
                 buffer.bitmap_height = g_back_buffer.bitmap_height;
@@ -324,6 +314,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 HDC dest_dc = GetDC(window_handle);
                 g_audio.render_client->ReleaseBuffer(available_frames, 0);
 
+                // GAME INPUT SWITCH
                 GameInput *temp = new_input;
                 new_input = old_input;
                 old_input = temp;
@@ -344,8 +335,24 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 last_counts = end_counts;
 
                 Win32WinDimensions dimensions = win32_get_win_dimensions(window_handle);
+
+#ifdef BUILD_INTERNAL
+                win32_debug_display_audio(debug_play_cursors, ARRAY_SIZE(debug_play_cursors),
+                    sound_output, target_seconds_per_frame);
+#endif // BUILD_INTERNAL
+
                 win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dest_dc);
+
+#ifdef BUILD_INTERNAL
+                {
+                    uint32_t play_cursor = ((sound_output.running_frame_index) - padding) %
+                        g_audio.buffer_frame_capacity;
+                    uint32_t write_cursor = (sound_output.running_frame_index) % g_audio.buffer_frame_capacity;
+                    debug_play_cursors[debug_play_cursor_index++] = play_cursor;
+                    debug_play_cursor_index = debug_play_cursor_index % ARRAY_SIZE(debug_play_cursors);
+                }
+#endif // BUILD_INTERNAL
 
                 float msecs_per_frame = (1000.0f * elapsed_counts) / g_performance_freq.QuadPart;
                 float fps = ((float)g_performance_freq.QuadPart) / elapsed_counts;

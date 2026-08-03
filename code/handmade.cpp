@@ -37,9 +37,9 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
     for (uint32_t frame {}; frame < sound_output.available_frames; ++frame) {
         // Square Wave
         // float sample_value = (running_sample_index++ % wave_period < wave_period / 2) ? volume : -volume;
-        float t = ((2.0f * PI32) * sound_output.running_sample_index) / sound_output.wave_period;
+        float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
         float sample_value = sinf(t) * sound_output.volume;
-        sound_output.running_sample_index++;
+        sound_output.running_frame_index++;
 
         for (uint32_t channel {}; channel < sound_output.channel_count; ++channel) {
             samples_out[frame * sound_output.channel_count + channel] = sample_value;

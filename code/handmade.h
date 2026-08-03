@@ -24,12 +24,12 @@ struct BackgroundScreenBuffer {
 
 struct GameSoundOutput {
     unsigned char *buffer;
-    uint32_t available_frames;
-    uint32_t running_sample_index;
+    float volume;
+    uint32_t available_frames; // Where we can write to in buffer
+    uint32_t running_frame_index;
     uint32_t tone_hz;
     uint32_t wave_period;
     uint32_t samples_per_sec;
-    float volume;
     uint8_t channel_count;
 };
 
