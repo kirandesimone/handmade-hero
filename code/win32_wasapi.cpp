@@ -3,7 +3,7 @@
 // may want to set our own samples_per_sec and buffer size later
 // 1 frame == 2 samples (1 float for left channel, 1 float for right channel) (stereo)
 void
-win32_audio_init(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size)
+win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size)
 {
     // Needed for COM bullshit and putting audio on a diff thread still needed
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -27,6 +27,17 @@ win32_audio_init(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_s
 
         result = audio.client->GetMixFormat(&audio.wave_fmt);
 
+        /*
+        Custom format??
+        wave_fmt.wFormatTag = WAVE_FORMAT_PCM;
+        wave_fmt.nChannels = 2;
+        wave_fmt.wBitsPerSample = 16;
+        wave_fmt.cbSize = 0;
+        wave_fmt.nBlockAlign = (wave_fmt.wBitsPerSample * wave_fmt.nChannels) / 8;
+        wave_fmt.nSamplesPerSec = samples_per_sec;
+        wave_fmt.nAvgBytesPerSec = wave_fmt.nSamplesPerSec * wave_fmt.nBlockAlign;
+        */
+
 #ifdef BUILD_INTERNAL
         WAVEFORMATEXTENSIBLE *full_fmt = (WAVEFORMATEXTENSIBLE*)audio.wave_fmt;
         if (full_fmt->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) {
@@ -43,21 +54,17 @@ win32_audio_init(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_s
         result = audio.client->GetBufferSize(&audio.buffer_frame_capacity);
         result = audio.client->GetService(__uuidof(IAudioRenderClient), (void**)&audio.render_client);
 
+        uint32_t padding {};
+        uint32_t available_frames {};
+        audio.client->GetCurrentPadding(&padding);
+        available_frames = audio.buffer_frame_capacity - padding;
+        audio.render_client->GetBuffer(available_frames, &audio.frame_buffer);
+
         // audio.out_size = audio.buffer_frame_capacity * audio.wave_fmt->nBlockAlign;
         audio.rb_size = audio.wave_fmt->nAvgBytesPerSec;
         // HMM not sure
-        audio.rb = VirtualAlloc(NULL, audio.rb_size, MEM_RESERVE, PAGE_READWRITE);
+        audio.ring_buffer = VirtualAlloc(NULL, audio.rb_size, MEM_RESERVE, PAGE_READWRITE);
     }
-
-    /*
-    wave_fmt.wFormatTag = WAVE_FORMAT_PCM;
-    wave_fmt.nChannels = 2;
-    wave_fmt.wBitsPerSample = 16;
-    wave_fmt.cbSize = 0;
-    wave_fmt.nBlockAlign = (wave_fmt.wBitsPerSample * wave_fmt.nChannels) / 8;
-    wave_fmt.nSamplesPerSec = samples_per_sec;
-    wave_fmt.nAvgBytesPerSec = wave_fmt.nSamplesPerSec * wave_fmt.nBlockAlign;
-    */
 }
 
 void

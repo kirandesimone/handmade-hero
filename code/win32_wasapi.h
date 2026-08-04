@@ -8,18 +8,18 @@
 #include <cstdint>
 
 struct Win32Audio {
-    void *rb;
-    uint32_t rb_write_offset;
-    uint32_t rb_read_offset;
-    uint32_t rb_size; // in bytes
-
+    unsigned char *frame_buffer;
+    void *ring_buffer;
     IAudioClient *client;
     IAudioRenderClient *render_client;
     WAVEFORMATEX *wave_fmt;
     uint32_t buffer_frame_capacity;
+    uint32_t rb_write_offset;
+    uint32_t rb_read_offset;
+    uint32_t rb_size; // in bytes
 };
 
-void win32_audio_init(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size);
+void win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size);
 void win32_audio_write_to_buffer(Win32Audio &audio, uint32_t frame_count);
 void win32_audio_read_from_buffer(Win32Audio &audio);
 

@@ -200,7 +200,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_audio_init(g_audio, 0, 700000);
+            win32_init_wasapi(g_audio, 0, 700000);
             g_audio.client->Start();
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
@@ -293,14 +293,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     }
                 }
 
-                // AUDIO
-                uint32_t padding {};
-                uint32_t available_frames {};
-                g_audio.client->GetCurrentPadding(&padding);
-                available_frames = g_audio.buffer_frame_capacity - padding;
-                sound_output.available_frames = available_frames;
-                g_audio.render_client->GetBuffer(available_frames, &sound_output.buffer);
-
                 // RENDERING
                 BackgroundScreenBuffer buffer {};
                 buffer.bitmap_mem = g_back_buffer.bitmap_mem;
@@ -312,7 +304,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 game_update_and_render(memory, sound_output, new_input, buffer);
 
                 HDC dest_dc = GetDC(window_handle);
-                g_audio.render_client->ReleaseBuffer(available_frames, 0);
+
+                // Should release this buffer when we kill the game/audio thread
+                // g_audio.render_client->ReleaseBuffer(available_frames, 0);
 
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
