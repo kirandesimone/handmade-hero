@@ -54,27 +54,46 @@ win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_
         result = audio.client->GetBufferSize(&audio.buffer_frame_capacity);
         result = audio.client->GetService(__uuidof(IAudioRenderClient), (void**)&audio.render_client);
 
-        uint32_t padding {};
-        uint32_t available_frames {};
-        audio.client->GetCurrentPadding(&padding);
-        available_frames = audio.buffer_frame_capacity - padding;
-        audio.render_client->GetBuffer(available_frames, &audio.frame_buffer);
-
         // audio.out_size = audio.buffer_frame_capacity * audio.wave_fmt->nBlockAlign;
         audio.rb_size = audio.wave_fmt->nAvgBytesPerSec;
         // HMM not sure
-        audio.ring_buffer = VirtualAlloc(NULL, audio.rb_size, MEM_RESERVE, PAGE_READWRITE);
+        audio.ring_buffer = VirtualAlloc(NULL, audio.rb_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     }
 }
 
 void
-win32_audio_read_from_buffer(Win32Audio &audio)
+win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions)
 {
+    RtlCopyMemory(audio.frame_buffer,
+        (uint8_t*)audio.ring_buffer + audio.rb_read_offset,
+        regions.region1_size);
 
+    RtlCopyMemory(audio.frame_buffer + regions.region1_size,
+        (uint8_t*)audio.ring_buffer,
+        regions.region2_size);
+
+    // do we just move the read offset to the write offset after dump?
 }
 
-void
-win32_audio_write_to_buffer(Win32Audio &audio, uint32_t frame_count)
+Win32AudioLockRegions
+win32_audio_lock_buffer(Win32Audio &audio, uint32_t bytes_to_write)
 {
+    Win32AudioLockRegions regions {};
+    unsigned char *buffer = (unsigned char*)audio.ring_buffer;
+    uint32_t write_region1_size = bytes_to_write;
+    uint32_t write_region2_size = 0; // if bytes_to_write + rb_write_offset > rb_size then we have to circle back
+    if (audio.rb_write_offset + bytes_to_write > audio.rb_size) {
+        write_region1_size = audio.rb_size - audio.rb_write_offset;
+        write_region2_size = bytes_to_write - write_region1_size;
+    }
 
+    regions.region1_size = write_region1_size;
+    regions.region2_size = write_region2_size;
+    regions.region1 = (void*)((uint8_t*)audio.ring_buffer +
+        (audio.rb_write_offset + write_region1_size % audio.rb_size));
+    regions.region2 = (void*)((uint8_t*)audio.ring_buffer + regions.region2_size % audio.rb_size);
+
+    audio.rb_write_offset = regions.region1_size + regions.region2_size % audio.rb_size;
+
+    return regions;
 }

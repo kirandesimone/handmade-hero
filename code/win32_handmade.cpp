@@ -200,20 +200,20 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_init_wasapi(g_audio, 0, 700000);
+            win32_init_wasapi(g_audio, 0, 100000);
             g_audio.client->Start();
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
             uint32_t debug_play_cursors[15] {};
 
             // NOTE: Might have to move if we ever allow audio endpoint to change
-            uint8_t channel_count = static_cast<uint8_t>(g_audio.wave_fmt->nChannels);
             GameSoundOutput sound_output {};
-            sound_output.channel_count = channel_count;
+            sound_output.channel_count = static_cast<uint8_t>(g_audio.wave_fmt->nChannels);
             sound_output.tone_hz = 256;
             sound_output.running_frame_index = 0;
             sound_output.volume = 0.3f;
             sound_output.samples_per_sec = g_audio.wave_fmt->nSamplesPerSec;
+            sound_output.frame_size = g_audio.wave_fmt->nBlockAlign;
 
             // Memory allocation
             void *starting_address = NULL;
@@ -293,7 +293,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     }
                 }
 
-                // RENDERING
+                // BUFFER for RENDERING
                 BackgroundScreenBuffer buffer {};
                 buffer.bitmap_mem = g_back_buffer.bitmap_mem;
                 buffer.bitmap_height = g_back_buffer.bitmap_height;
@@ -301,13 +301,25 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 buffer.bytes_per_pixel = g_back_buffer.bytes_per_pixel;
                 buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
+                // AUDIO
+                uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
+                Win32AudioLockRegions regions = win32_audio_lock_buffer(g_audio, rb_free_space);
+                sound_output.region1 = regions.region1;
+                sound_output.region2 = regions.region2;
+                sound_output.region1_size = regions.region1_size;
+                sound_output.region2_size = regions.region2_size;
+
                 game_update_and_render(memory, sound_output, new_input, buffer);
 
+                uint32_t padding {};
+                uint32_t available_frames {};
+                g_audio.client->GetCurrentPadding(&padding);
+                available_frames = g_audio.buffer_frame_capacity - padding;
+                g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
+
+                win32_audio_unlock_buffer(g_audio, regions);
+
                 HDC dest_dc = GetDC(window_handle);
-
-                // Should release this buffer when we kill the game/audio thread
-                // g_audio.render_client->ReleaseBuffer(available_frames, 0);
-
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
                 new_input = old_input;
@@ -337,6 +349,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dest_dc);
+                g_audio.render_client->ReleaseBuffer(available_frames, 0);
 
 #ifdef BUILD_INTERNAL
                 {

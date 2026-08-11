@@ -23,13 +23,16 @@ struct BackgroundScreenBuffer {
 };
 
 struct GameSoundOutput {
-    unsigned char *buffer;
+    void *region1;
+    void *region2;
     float volume;
-    uint32_t available_frames; // Where we can write to in buffer
+    uint32_t region1_size;
+    uint32_t region2_size;
     uint32_t running_frame_index;
     uint32_t tone_hz;
     uint32_t wave_period;
     uint32_t samples_per_sec;
+    uint32_t frame_size;
     uint8_t channel_count;
 };
 
@@ -40,9 +43,9 @@ struct GameButtonState {
 };
 
 struct GameControllerInput {
-    union _internal_input {
+    union input_t {
         GameButtonState buttons_array[4];
-        struct _internal_buttons {
+        struct buttons_t {
             GameButtonState up;
             GameButtonState right;
             GameButtonState down;
