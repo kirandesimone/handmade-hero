@@ -192,6 +192,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
     constexpr uint32_t monitor_refresh_hz = 60;
     constexpr uint32_t game_refresh_hz = monitor_refresh_hz / 2;
     constexpr float target_seconds_per_frame = 1.0f / game_refresh_hz;
+    uint32_t audio_frame_bytes_per_frame = (target_seconds_per_frame *
+        g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt ->nBlockAlign;
 
     if (RegisterClass(&window_class)) {
         HWND window_handle = CreateWindowEx(
@@ -302,8 +304,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
                 // AUDIO
-                uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
-                Win32AudioLockRegions regions = win32_audio_lock_buffer(g_audio, rb_free_space);
+                // uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
+                Win32AudioLockRegions regions = win32_audio_lock_buffer(g_audio, audio_frame_bytes_per_frame);
                 sound_output.region1 = regions.region1;
                 sound_output.region2 = regions.region2;
                 sound_output.region1_size = regions.region1_size;
@@ -315,9 +317,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 uint32_t available_frames {};
                 g_audio.client->GetCurrentPadding(&padding);
                 available_frames = g_audio.buffer_frame_capacity - padding;
-                g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
 
-                win32_audio_unlock_buffer(g_audio, regions);
+                win32_audio_unlock_buffer(g_audio, regions, available_frames);
+                g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
 
                 HDC dest_dc = GetDC(window_handle);
                 // GAME INPUT SWITCH

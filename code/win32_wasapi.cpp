@@ -62,17 +62,22 @@ win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_
 }
 
 void
-win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions)
+win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions, uint32_t available_frames)
 {
-    RtlCopyMemory(audio.frame_buffer,
+    uint32_t available_frame_bytes = available_frames * audio.wave_fmt->nBlockAlign;
+    uint32_t read_region1_size = available_frame_bytes;
+    uint32_t read_region2_size = 0;
+    // This needs to change
+    if (audio.rb_read_offset + read_region1_size > available_frame_bytes) {
+        read_region1_size =  audio.rb_size - audio.rb_read_offset;
+        read_region2_size = available_frames - read_region1_size;
+    }
+
+    CopyMemory(audio.frame_buffer,
         (uint8_t*)audio.ring_buffer + audio.rb_read_offset,
-        regions.region1_size);
+        rb_drained_bytes);
 
-    RtlCopyMemory(audio.frame_buffer + regions.region1_size,
-        (uint8_t*)audio.ring_buffer,
-        regions.region2_size);
-
-    // do we just move the read offset to the write offset after dump?
+    audio.rb_read_offset = (audio.rb_read_offset + rb_drained_bytes) % audio.rb_size;
 }
 
 Win32AudioLockRegions
@@ -89,11 +94,11 @@ win32_audio_lock_buffer(Win32Audio &audio, uint32_t bytes_to_write)
 
     regions.region1_size = write_region1_size;
     regions.region2_size = write_region2_size;
-    regions.region1 = (void*)((uint8_t*)audio.ring_buffer +
-        (audio.rb_write_offset + write_region1_size % audio.rb_size));
-    regions.region2 = (void*)((uint8_t*)audio.ring_buffer + regions.region2_size % audio.rb_size);
+    regions.region1 = (void*)((uint8_t*)audio.ring_buffer + audio.rb_write_offset);
+    regions.region2 = (void*)((uint8_t*)audio.ring_buffer + regions.region2_size);
 
-    audio.rb_write_offset = regions.region1_size + regions.region2_size % audio.rb_size;
+    audio.rb_write_offset = (audio.rb_write_offset +
+        (regions.region1_size + regions.region2_size)) % audio.rb_size;
 
     return regions;
 }

@@ -42,7 +42,7 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
         float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
         float frame_value = sinf(t) * sound_output.volume;
         sound_output.running_frame_index++;
-        if (frame_count > sound_output.region1_size) {
+        if (frame_count > (sound_output.region1_size / sound_output.frame_size)) {
             frames_out = region2_out;
         }
 

@@ -13,10 +13,10 @@ struct Win32Audio {
     IAudioClient *client;
     IAudioRenderClient *render_client;
     WAVEFORMATEX *wave_fmt;
+    uint32_t rb_size; // in bytes
     uint32_t buffer_frame_capacity;
     uint32_t rb_write_offset;
     uint32_t rb_read_offset;
-    uint32_t rb_size; // in bytes
 };
 
 struct Win32AudioLockRegions {
@@ -28,6 +28,6 @@ struct Win32AudioLockRegions {
 
 void win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size);
 Win32AudioLockRegions win32_audio_lock_buffer(Win32Audio &audio, uint32_t bytes_to_write);
-void win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions);
+void win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions, uint32_t available_frames);
 
 #endif // WIN32_WASAPI_H
