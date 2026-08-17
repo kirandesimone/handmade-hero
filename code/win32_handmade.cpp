@@ -1,6 +1,4 @@
-#include "handmade.h"
 #include "win32_handmade.h"
-#include "win32_wasapi.h"
 
 // Globals
 static bool g_running;
@@ -192,8 +190,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
     constexpr uint32_t monitor_refresh_hz = 60;
     constexpr uint32_t game_refresh_hz = monitor_refresh_hz / 2;
     constexpr float target_seconds_per_frame = 1.0f / game_refresh_hz;
-    uint32_t audio_frame_bytes_per_frame = (target_seconds_per_frame *
-        g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt ->nBlockAlign;
 
     if (RegisterClass(&window_class)) {
         HWND window_handle = CreateWindowEx(
@@ -202,7 +198,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_init_wasapi(g_audio, 0, 100000);
+            win32_init_wasapi(g_audio, 0, 400000);
             g_audio.client->Start();
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
@@ -216,6 +212,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             sound_output.volume = 0.3f;
             sound_output.samples_per_sec = g_audio.wave_fmt->nSamplesPerSec;
             sound_output.frame_size = g_audio.wave_fmt->nBlockAlign;
+
+            uint32_t target_audio_frame_bytes_per_frame = static_cast<uint32_t>((target_seconds_per_frame *
+                    g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt ->nBlockAlign);
 
             // Memory allocation
             void *starting_address = NULL;
@@ -305,7 +304,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 // AUDIO
                 // uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
-                Win32AudioLockRegions regions = win32_audio_lock_buffer(g_audio, audio_frame_bytes_per_frame);
+                Win32AudioLockRegions regions = win32_audio_lock_buffer(g_audio, target_audio_frame_bytes_per_frame);
                 sound_output.region1 = regions.region1;
                 sound_output.region2 = regions.region2;
                 sound_output.region1_size = regions.region1_size;
@@ -317,11 +316,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 uint32_t available_frames {};
                 g_audio.client->GetCurrentPadding(&padding);
                 available_frames = g_audio.buffer_frame_capacity - padding;
-
-                win32_audio_unlock_buffer(g_audio, regions, available_frames);
                 g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
 
+                uint32_t bytes_read = win32_audio_unlock_buffer(g_audio, regions, available_frames);
+                uint32_t frames_read = bytes_read / g_audio.wave_fmt->nBlockAlign;
                 HDC dest_dc = GetDC(window_handle);
+
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
                 new_input = old_input;
@@ -351,7 +351,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dest_dc);
-                g_audio.render_client->ReleaseBuffer(available_frames, 0);
+                g_audio.render_client->ReleaseBuffer(frames_read, 0);
 
 #ifdef BUILD_INTERNAL
                 {
@@ -368,6 +368,14 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 char msecs_per_frame_buff[256];
                 sprintf_s(msecs_per_frame_buff, "Milliseconds/frame: %.6f / %.6f FPS\n", msecs_per_frame, fps);
                 OutputDebugStringA(msecs_per_frame_buff);
+
+                uint32_t rb_backlog = (g_audio.rb_write_offset - g_audio.rb_read_offset) / g_audio.wave_fmt->nBlockAlign;
+                char backlog_buff[256];
+                sprintf_s(backlog_buff, "frame backlog: %d, available_frame: %d, padding: %d\n", rb_backlog, available_frames, padding);
+                OutputDebugStringA(backlog_buff);
+
+
+
             }
         }
     }

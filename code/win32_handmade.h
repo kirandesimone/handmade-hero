@@ -1,6 +1,9 @@
 #ifndef WIN32_HANDMADE_H
 #define WIN32_HANDMADE_H
 
+#include "win32_wasapi.h"
+#include "handmade.h"
+
 #include <cstdint>
 #include <Windows.h>
 #include <winerror.h>

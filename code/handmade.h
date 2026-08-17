@@ -81,4 +81,6 @@ void *DEBUGplatform_read_entire_file(const char *filename);
 void DEBUGplatform_free_file(void *memory);
 bool DEBUGplatform_write_file(void *memory);
 
+uint32_t pow2_round_up(uint32_t value);
+
 #endif

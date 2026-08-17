@@ -35,6 +35,8 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
     float *region2_out = reinterpret_cast<float*>(sound_output.region2);
     float *frames_out = region1_out;
     uint32_t free_frames = (sound_output.region1_size + sound_output.region2_size) / sound_output.frame_size;
+    uint32_t region1_size_frame_count = (sound_output.region1_size / sound_output.frame_size);
+
     // Write our sample data into the buffer
     for (uint32_t frame_count {}; frame_count < free_frames; ++frame_count) {
         // Square Wave
@@ -42,7 +44,7 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
         float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
         float frame_value = sinf(t) * sound_output.volume;
         sound_output.running_frame_index++;
-        if (frame_count > (sound_output.region1_size / sound_output.frame_size)) {
+        if (frame_count >= region1_size_frame_count) {
             frames_out = region2_out;
         }
 
@@ -78,4 +80,18 @@ game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
     void *file_memory = DEBUGplatform_read_entire_file("test.txt");
     game_fill_sound_output_buffer(sound_output);
     game_render_gradient(buffer, state->x_offset, state->y_offset);
+}
+
+uint32_t
+pow2_round_up(uint32_t value)
+{
+    value--;
+    value |= value >> 1;
+    value |= value >> 2;
+    value |= value >> 4;
+    value |= value >> 8;
+    value |= value >> 16;
+    value++;
+
+    return value;
 }
