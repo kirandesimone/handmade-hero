@@ -62,7 +62,7 @@ win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_
 }
 
 uint32_t
-win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions, uint32_t available_frames)
+win32_audio_unlock_buffer(Win32Audio &audio, uint32_t available_frames)
 {
     // The buffer is empty
     if (audio.rb_read_offset == audio.rb_write_offset) {
@@ -95,24 +95,18 @@ win32_audio_unlock_buffer(Win32Audio &audio, Win32AudioLockRegions &regions, uin
     return read_region1_size + read_region2_size;
 }
 
-Win32AudioLockRegions
-win32_audio_lock_buffer(Win32Audio &audio, uint32_t bytes_to_write)
+void
+win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, uint32_t bytes_to_write)
 {
-    Win32AudioLockRegions regions {};
     uint32_t rb_backlog = audio.rb_write_offset - audio.rb_read_offset;
     uint32_t rb_free_space = audio.rb_capacity - rb_backlog;
-
-    // The buffer is full
-    if (rb_backlog == audio.rb_capacity) {
-        return regions;
-    }
-
     unsigned char *buffer = (unsigned char*)audio.ring_buffer;
     uint32_t write_region1_size = bytes_to_write;
     uint32_t write_region2_size = 0; // if bytes_to_write + rb_write_offset > rb_size then we have to circle back
     // another way to clamp but capacity needs to be pow 2
     uint32_t local_write_offset = audio.rb_write_offset & (audio.rb_capacity - 1);
 
+    // This might not be needed anymore since we only lock once we go below the threshold
     if (write_region1_size > rb_free_space) {
         write_region1_size = rb_free_space;
         bytes_to_write = rb_free_space;
@@ -123,12 +117,10 @@ win32_audio_lock_buffer(Win32Audio &audio, uint32_t bytes_to_write)
         write_region2_size = bytes_to_write - write_region1_size;
     }
 
-    regions.region1_size = write_region1_size;
-    regions.region2_size = write_region2_size;
-    regions.region1 = (void*)((uint8_t*)audio.ring_buffer + local_write_offset);
-    regions.region2 = (void*)(uint8_t*)audio.ring_buffer;
+    sound_output.region1_size = write_region1_size;
+    sound_output.region2_size = write_region2_size;
+    sound_output.region1 = (void*)((uint8_t*)audio.ring_buffer + local_write_offset);
+    sound_output.region2 = (void*)(uint8_t*)audio.ring_buffer;
 
     audio.rb_write_offset += (write_region1_size + write_region2_size);
-
-    return regions;
 }
