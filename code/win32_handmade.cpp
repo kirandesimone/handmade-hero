@@ -176,7 +176,6 @@ win32_window_proc(HWND win_handle, UINT msg, WPARAM wparam, LPARAM lparam)
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show)
 {
-
     WNDCLASS window_class {};
     window_class.style = CS_HREDRAW | CS_VREDRAW; // Repaint the whole window instead of just the new section
     window_class.lpfnWndProc = win32_window_proc;
@@ -186,6 +185,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
     QueryPerformanceFrequency(&g_performance_freq);
 
+    constexpr uint32_t hns_wasapi_buffer_duration = 100000;
     // TODO: Need to query monitor refresh rate through Windows
     constexpr uint32_t monitor_refresh_hz = 60;
     constexpr uint32_t game_refresh_hz = monitor_refresh_hz / 2;
@@ -198,7 +198,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_init_wasapi(g_audio, 0, 400000);
+            win32_init_wasapi(g_audio, 0, hns_wasapi_buffer_duration);
             g_audio.client->Start();
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
@@ -214,7 +214,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             sound_output.frame_size = g_audio.wave_fmt->nBlockAlign;
 
             uint32_t target_audio_frame_bytes_per_frame = static_cast<uint32_t>((target_seconds_per_frame *
-                    g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt ->nBlockAlign);
+                    g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt->nBlockAlign);
 
             // Memory allocation
             void *starting_address = NULL;
