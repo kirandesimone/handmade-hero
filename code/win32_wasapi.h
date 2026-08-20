@@ -7,6 +7,7 @@
 #include <Audioclient.h>
 #include <mmreg.h>
 #include <cstdint>
+#include <synchapi.h>
 
 struct Win32Audio {
     unsigned char *frame_buffer; // the buffer we get from wasapi
@@ -14,6 +15,7 @@ struct Win32Audio {
     IAudioClient *client;
     IAudioRenderClient *render_client;
     WAVEFORMATEX *wave_fmt;
+    void *eventHandle;
     uint32_t rb_capacity; // in bytes
     uint32_t buffer_frame_capacity;
     uint32_t rb_write_offset;
@@ -23,6 +25,7 @@ struct Win32Audio {
 
 
 void win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_size);
+void win32_audio_thread_main();
 void win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, uint32_t bytes_to_write);
 uint32_t win32_audio_unlock_buffer(Win32Audio &audio, uint32_t available_frames);
 

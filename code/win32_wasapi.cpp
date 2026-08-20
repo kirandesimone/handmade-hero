@@ -26,7 +26,6 @@ win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_
         endpoint->Release();
 
         result = audio.client->GetMixFormat(&audio.wave_fmt);
-
         /*
         Custom format??
         wave_fmt.wFormatTag = WAVE_FORMAT_PCM;
@@ -48,16 +47,51 @@ win32_init_wasapi(Win32Audio &audio, uint32_t samples_per_sec_, uint32_t buffer_
         // looking for 480 samples/10msec
         audio.client->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
             buffer_size, 0, audio.wave_fmt, NULL);
 
+        audio.eventHandle = CreateEvent(NULL, FALSE, FALSE, NULL);
+        result = audio.client->SetEventHandle(audio.eventHandle);
         result = audio.client->GetBufferSize(&audio.buffer_frame_capacity);
         result = audio.client->GetService(__uuidof(IAudioRenderClient), (void**)&audio.render_client);
-
         // Ensure its a power of 2
         audio.rb_capacity = pow2_round_up(audio.wave_fmt->nAvgBytesPerSec);
         // HMM not sure
         audio.ring_buffer = VirtualAlloc(NULL, audio.rb_capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    }
+}
+
+void
+win32_audio_thread_main()
+{
+    uint32_t padding {};
+    uint32_t available_frames {};
+
+    while (WaitForSingleObject()) {
+        // uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
+        g_audio.client->GetCurrentPadding(&padding);
+        uint32_t rb_backlog = (g_audio.rb_write_offset - g_audio.rb_read_offset);
+        if (rb_backlog < g_audio.rb_backlog_threshold) {
+            win32_audio_lock_buffer(g_audio, sound_output, g_audio.rb_backlog_threshold - rb_backlog);
+        }
+
+        game_update_and_render(memory, sound_output, new_input, buffer);
+
+        available_frames = g_audio.buffer_frame_capacity - padding;
+        g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
+
+        uint32_t bytes_read = win32_audio_unlock_buffer(g_audio, available_frames);
+        uint32_t frames_read = bytes_read / g_audio.wave_fmt->nBlockAlign;
+
+        g_audio.render_client->ReleaseBuffer(frames_read, 0);
+
+        /*
+        char backlog_buff[256];
+        sprintf_s(backlog_buff, "frame backlog: %d, available_frame: %d, padding: %d\n", rb_backlog, available_frames, padding);
+        OutputDebugStringA(backlog_buff);
+        */
     }
 }
 

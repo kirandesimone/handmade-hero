@@ -213,11 +213,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             sound_output.samples_per_sec = g_audio.wave_fmt->nSamplesPerSec;
             sound_output.frame_size = g_audio.wave_fmt->nBlockAlign;
 
-            uint32_t padding {};
-            uint32_t available_frames {};
-            uint32_t target_audio_frame_bytes_per_frame = static_cast<uint32_t>((target_seconds_per_frame *
-                    g_audio.wave_fmt->nSamplesPerSec) * g_audio.wave_fmt->nBlockAlign);
-            g_audio.rb_backlog_threshold = target_audio_frame_bytes_per_frame * 2;
             // Memory allocation
             void *starting_address = NULL;
 #ifdef BUILD_INTERNAL
@@ -304,23 +299,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 buffer.bytes_per_pixel = g_back_buffer.bytes_per_pixel;
                 buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
-                // AUDIO
-                // uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
-                g_audio.client->GetCurrentPadding(&padding);
-                uint32_t rb_backlog = (g_audio.rb_write_offset - g_audio.rb_read_offset);
-                if (rb_backlog < g_audio.rb_backlog_threshold) {
-                    win32_audio_lock_buffer(g_audio, sound_output, g_audio.rb_backlog_threshold - rb_backlog);
-                }
-
-                game_update_and_render(memory, sound_output, new_input, buffer);
-
-                available_frames = g_audio.buffer_frame_capacity - padding;
-                g_audio.render_client->GetBuffer(available_frames, &g_audio.frame_buffer);
-
-                uint32_t bytes_read = win32_audio_unlock_buffer(g_audio, available_frames);
-                uint32_t frames_read = bytes_read / g_audio.wave_fmt->nBlockAlign;
                 HDC dest_dc = GetDC(window_handle);
-
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
                 new_input = old_input;
@@ -350,7 +329,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dest_dc);
-                g_audio.render_client->ReleaseBuffer(frames_read, 0);
 
 #ifdef BUILD_INTERNAL
                 {
@@ -367,13 +345,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 char msecs_per_frame_buff[256];
                 sprintf_s(msecs_per_frame_buff, "Milliseconds/frame: %.6f / %.6f FPS\n", msecs_per_frame, fps);
                 OutputDebugStringA(msecs_per_frame_buff);
-
-                char backlog_buff[256];
-                sprintf_s(backlog_buff, "frame backlog: %d, available_frame: %d, padding: %d\n", rb_backlog, available_frames, padding);
-                OutputDebugStringA(backlog_buff);
-
-
-
             }
         }
     }
