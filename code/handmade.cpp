@@ -85,6 +85,7 @@ game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
 uint32_t
 pow2_round_up(uint32_t value)
 {
+    // https://jameshfisher.com/2018/03/30/round-up-power-2/
     value--;
     value |= value >> 1;
     value |= value >> 2;

@@ -198,7 +198,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
-            win32_init_wasapi(g_audio, 0, hns_wasapi_buffer_duration);
+            win32_init_wasapi(&g_audio, 0, hns_wasapi_buffer_duration);
             g_audio.client->Start();
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
@@ -299,7 +299,15 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 buffer.bytes_per_pixel = g_back_buffer.bytes_per_pixel;
                 buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
+                win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
+
+                game_update_and_render(memory, sound_output, new_input, buffer);
+
+                uint32_t bytes_written = sound_output.region1_size + sound_output.region2_size;
+                win32_audio_unlock_buffer(g_audio, bytes_written);
+
                 HDC dest_dc = GetDC(window_handle);
+
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
                 new_input = old_input;
@@ -332,6 +340,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
 #ifdef BUILD_INTERNAL
                 {
+                    uint32_t padding {};
+                    g_audio.client->GetCurrentPadding(&padding);
                     uint32_t play_cursor = ((sound_output.running_frame_index) - padding) %
                         g_audio.buffer_frame_capacity;
                     uint32_t write_cursor = (sound_output.running_frame_index) % g_audio.buffer_frame_capacity;
