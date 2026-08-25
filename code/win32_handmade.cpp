@@ -347,14 +347,14 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     uint32_t write_cursor = (sound_output.running_frame_index) % g_audio.buffer_frame_capacity;
                     debug_play_cursors[debug_play_cursor_index++] = play_cursor;
                     debug_play_cursor_index = debug_play_cursor_index % ARRAY_SIZE(debug_play_cursors);
+
+                    float msecs_per_frame = (1000.0f * elapsed_counts) / g_performance_freq.QuadPart;
+                    float fps = ((float)g_performance_freq.QuadPart) / elapsed_counts;
+                    char msecs_per_frame_buff[256];
+                    sprintf_s(msecs_per_frame_buff, "Milliseconds/frame: %.6f / %.6f FPS\n", msecs_per_frame, fps);
+                    OutputDebugStringA(msecs_per_frame_buff);
                 }
 #endif // BUILD_INTERNAL
-
-                float msecs_per_frame = (1000.0f * elapsed_counts) / g_performance_freq.QuadPart;
-                float fps = ((float)g_performance_freq.QuadPart) / elapsed_counts;
-                char msecs_per_frame_buff[256];
-                sprintf_s(msecs_per_frame_buff, "Milliseconds/frame: %.6f / %.6f FPS\n", msecs_per_frame, fps);
-                OutputDebugStringA(msecs_per_frame_buff);
             }
         }
     }

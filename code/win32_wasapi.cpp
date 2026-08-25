@@ -45,7 +45,6 @@ win32_init_wasapi(Win32Audio *audio, uint32_t samples_per_sec_, uint32_t buffer_
             OutputDebugString("Float");
         }
 #endif
-
         // looking for 480 samples/10msec
         audio->client->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
@@ -60,7 +59,7 @@ win32_init_wasapi(Win32Audio *audio, uint32_t samples_per_sec_, uint32_t buffer_
         result = audio->client->GetService(__uuidof(IAudioRenderClient), (void**)&audio->render_client);
         // Ensure its a power of 2
         audio->rb_capacity = pow2_round_up(audio->wave_fmt->nAvgBytesPerSec);
-        audio->frame_count_bytes = audio->wave_fmt->nSamplesPerSec * audio->wave_fmt->nBlockAlign;
+        audio->frame_count_bytes = (audio->wave_fmt->nSamplesPerSec/30) * audio->wave_fmt->nBlockAlign;
         // HMM not sure
         audio->ring_buffer = VirtualAlloc(NULL, audio->rb_capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
         audio->thread = CreateThread(NULL, 0, &win32_audio_thread_main, audio, 0, NULL);
@@ -163,4 +162,10 @@ win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, uint32
     sound_output.region2_size = write_region2_size;
     sound_output.region1 = (void*)((uint8_t*)audio.ring_buffer + local_write_offset);
     sound_output.region2 = (void*)(uint8_t*)audio.ring_buffer;
+
+#ifdef BUILD_INTERNAL
+    char lock_buff[256];
+    sprintf_s(lock_buff, "Backlog: %d, Free Space: %d, WR1: %d, WR2: %d\n", rb_backlog, rb_free_space, write_region1_size, write_region2_size);
+    OutputDebugStringA(lock_buff);
+#endif // BUILD_INTERNAL
 }
