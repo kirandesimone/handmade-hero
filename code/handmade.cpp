@@ -36,6 +36,7 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
     float *frames_out = region1_out;
     uint32_t free_frames = (sound_output.region1_size + sound_output.region2_size) / sound_output.frame_size;
     uint32_t region1_size_frame_count = (sound_output.region1_size / sound_output.frame_size);
+    uint32_t region_index {};
 
     // Write our sample data into the buffer
     for (uint32_t frame_count {}; frame_count < free_frames; ++frame_count) {
@@ -44,12 +45,15 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
         float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
         float frame_value = sinf(t) * sound_output.volume;
         sound_output.running_frame_index++;
+        region_index = frame_count;
+
         if (frame_count >= region1_size_frame_count) {
             frames_out = region2_out;
+            region_index = frame_count - region1_size_frame_count;
         }
 
         for (uint32_t channel {}; channel < sound_output.channel_count; ++channel) {
-            frames_out[frame_count * sound_output.channel_count + channel] = frame_value;
+            frames_out[region_index * sound_output.channel_count + channel] = frame_value;
         }
     }
 }

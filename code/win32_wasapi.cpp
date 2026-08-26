@@ -59,7 +59,7 @@ win32_init_wasapi(Win32Audio *audio, uint32_t samples_per_sec_, uint32_t buffer_
         result = audio->client->GetService(__uuidof(IAudioRenderClient), (void**)&audio->render_client);
         // Ensure its a power of 2
         audio->rb_capacity = pow2_round_up(audio->wave_fmt->nAvgBytesPerSec);
-        audio->frame_count_bytes = (audio->wave_fmt->nSamplesPerSec/30) * audio->wave_fmt->nBlockAlign;
+        audio->frame_count_bytes = (audio->wave_fmt->nSamplesPerSec/10) * audio->wave_fmt->nBlockAlign;
         // HMM not sure
         audio->ring_buffer = VirtualAlloc(NULL, audio->rb_capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
         audio->thread = CreateThread(NULL, 0, &win32_audio_thread_main, audio, 0, NULL);
