@@ -1,6 +1,4 @@
 #include "win32_wasapi.h"
-#include <atomic>
-#include <cstdio>
 
 // may want to set our own samples_per_sec and buffer size later
 // 1 frame == 2 samples (1 float for left channel, 1 float for right channel) (stereo)
@@ -117,10 +115,6 @@ win32_audio_thread_main(void *audio_ptr)
         uint32_t new_offset = audio->rb_read_offset + bytes_read;
 
         audio->rb_read_offset.store(new_offset, std::memory_order_release);
-
-        char backlog_buff[256];
-        sprintf_s(backlog_buff, "available_frames: %d, padding: %d\n", available_frames, padding);
-        OutputDebugStringA(backlog_buff);
     }
 
     return 0;

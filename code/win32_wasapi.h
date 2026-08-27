@@ -10,8 +10,8 @@
 #include <cstdint>
 #include <synchapi.h>
 #include <avrt.h>
-#include <Windows.h>
 
+#include <cstdio>
 #include <atomic>
 
 struct Win32Audio {

@@ -70,16 +70,13 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
 {
     uint32_t ypad = 16;
     uint32_t xpad = 16;
-
     uint32_t top = ypad;
     uint32_t bottom = g_back_buffer.bitmap_height - ypad;
     // audio frames to pixels ratio to map into back_buffer
     float coefficient = (float)g_back_buffer.bitmap_width / g_audio.buffer_frame_capacity;
-    for (uint32_t play_cursor_index {};
-        play_cursor_index < play_cursors_count;
-        ++play_cursor_index)
-    {
-        uint32_t frame_pixel_col= (uint32_t)(coefficient * play_cursors[play_cursor_index]);
+
+    for (uint32_t play_cursor_index {}; play_cursor_index < play_cursors_count; ++play_cursor_index) {
+        uint32_t frame_pixel_col = (uint32_t)(coefficient * play_cursors[play_cursor_index]);
         win32_debug_draw_audio_frame(frame_pixel_col, top, bottom);
     }
 }
