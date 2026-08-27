@@ -1,6 +1,8 @@
 /*
  * Game layer (platform-independent) stuff
+ * LOOK AT THIS https://devgex.com/en/article/00040976
  */
+
 
 #include "handmade.h"
 
@@ -81,22 +83,7 @@ game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
         state->y_offset--;
     }
 
-    void *file_memory = DEBUGplatform_read_entire_file("test.txt");
+    void *file_memory = memory.read_file_func("test.txt");
     game_fill_sound_output_buffer(sound_output);
     game_render_gradient(buffer, state->x_offset, state->y_offset);
-}
-
-uint32_t
-pow2_round_up(uint32_t value)
-{
-    // https://jameshfisher.com/2018/03/30/round-up-power-2/
-    value--;
-    value |= value >> 1;
-    value |= value >> 2;
-    value |= value >> 4;
-    value |= value >> 8;
-    value |= value >> 16;
-    value++;
-
-    return value;
 }

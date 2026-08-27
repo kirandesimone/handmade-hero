@@ -4,15 +4,17 @@
 #include <cstdint>
 #include <cmath>
 
+
 #define ASSERT(expression) if(!(expression)) {*(int*)0 = 0;}
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
-static constexpr float PI32 {3.1415926535f};
+static constexpr float    PI32 {3.1415926535f};
 static constexpr uint32_t MAX_UINT32 {0xFFFFFFFF};
 static constexpr uint64_t KIBIBYTES(uint64_t value) {return value * 1024;};
 static constexpr uint64_t MEBIBYTES(uint64_t value) {return KIBIBYTES(value) * 1024;};
 static constexpr uint64_t GIBIBYTES(uint64_t value) {return MEBIBYTES(value) * 1024;};
 static constexpr uint64_t TEBIBYTES(uint64_t value) {return GIBIBYTES(value) * 1024;};
+
 
 struct BackgroundScreenBuffer {
     void *bitmap_mem;
@@ -36,7 +38,6 @@ struct GameSoundOutput {
     uint8_t channel_count;
 };
 
-
 struct GameButtonState {
     uint32_t half_transition_state;
     bool ended_down;
@@ -59,11 +60,26 @@ struct GameInput {
     GameControllerInput controllers[4];
 };
 
+
+using ptr_DEBUGplatform_read_entire_file = void *(*)(const char*);
+using ptr_DEBUGplatform_free_file = void (*)(void*);
+using ptr_DEBUGplatform_write_file = bool (*)(void*);
+
+void *DEBUGplatform_read_entire_file(const char *filename);
+void DEBUGplatform_free_file(void *memory);
+bool DEBUGplatform_write_file(void *memory);
+
+
 struct GameMemory {
-    uint64_t persistent_storage_size;
     void *persistent_storage;
-    uint64_t transient_storage_size;
+    uint64_t persistent_storage_size;
     void *transient_storage;
+    uint64_t transient_storage_size;
+
+    ptr_DEBUGplatform_read_entire_file read_file_func;
+    ptr_DEBUGplatform_write_file write_file_func;
+    ptr_DEBUGplatform_free_file free_file_func;
+
     bool is_initialized;
 };
 
@@ -73,13 +89,13 @@ struct GameState {
 };
 
 
+using ptr_game_fill_sound_output_buffer = void (*)(GameSoundOutput&);
+using ptr_game_update_and_render = void (*)(GameMemory&, GameSoundOutput&,
+    GameInput*, BackgroundScreenBuffer&);
+
 void game_fill_sound_output_buffer(GameSoundOutput &buffer);
 void game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
     GameInput *input, BackgroundScreenBuffer &buffer);
-
-void *DEBUGplatform_read_entire_file(const char *filename);
-void DEBUGplatform_free_file(void *memory);
-bool DEBUGplatform_write_file(void *memory);
 
 uint32_t pow2_round_up(uint32_t value);
 

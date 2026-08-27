@@ -36,4 +36,6 @@ void win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, u
 void win32_audio_unlock_buffer(Win32Audio &audio, uint32_t bytes_written);
 unsigned long WINAPI win32_audio_thread_main(void *param);
 
+uint32_t pow2_round_up(uint32_t value);
+
 #endif // WIN32_WASAPI_H

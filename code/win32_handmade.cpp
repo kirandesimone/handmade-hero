@@ -7,6 +7,24 @@ static Win32Audio g_audio;
 static LARGE_INTEGER g_performance_freq;
 
 
+static Win32LoadedGameCode
+win32_load_game_code(void)
+{
+    Win32LoadedGameCode game {};
+    game.dll_handle = LoadLibrary("handmade.dll");
+
+    if (game.dll_handle) {
+        game.fill_sound_output_buffer = (
+            (ptr_game_fill_sound_output_buffer)GetProcAddress(game.dll_handle, "game_fill_sound_output_buffer")
+        );
+        game.update_and_render = (
+            (ptr_game_update_and_render)GetProcAddress(game.dll_handle, "game_update_and_render")
+        );
+    }
+
+    return game;
+}
+
 void*
 DEBUGplatform_read_entire_file(const char *filename)
 {
@@ -173,6 +191,7 @@ win32_window_proc(HWND win_handle, UINT msg, WPARAM wparam, LPARAM lparam)
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show)
 {
+    Win32LoadedGameCode game = win32_load_game_code();
     WNDCLASS window_class {};
     window_class.style = CS_HREDRAW | CS_VREDRAW; // Repaint the whole window instead of just the new section
     window_class.lpfnWndProc = win32_window_proc;
@@ -212,10 +231,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
             // Memory allocation
             void *starting_address = NULL;
+
 #ifdef BUILD_INTERNAL
             // we always want the memory to start here for dev builds
             starting_address = reinterpret_cast<void *>(TEBIBYTES(2));
 #endif
+
             constexpr uint64_t persistent_mem_size = MEBIBYTES(64);
             constexpr uint64_t transient_mem_size = GIBIBYTES(4);
             constexpr uint64_t total_mem_size = persistent_mem_size + transient_mem_size;
@@ -231,6 +252,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             if (!memory.persistent_storage || !memory.transient_storage) {
                 return 0 ;
             }
+
+            memory.read_file_func = DEBUGplatform_read_entire_file;
+            memory.free_file_func = DEBUGplatform_free_file;
 
             GameInput input[2] {};
             GameInput *new_input = &input[0];
@@ -298,7 +322,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
 
-                game_update_and_render(memory, sound_output, new_input, buffer);
+                game.update_and_render(memory, sound_output, new_input, buffer);
 
                 uint32_t bytes_written = sound_output.region1_size + sound_output.region2_size;
                 win32_audio_unlock_buffer(g_audio, bytes_written);

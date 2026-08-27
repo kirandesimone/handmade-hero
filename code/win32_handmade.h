@@ -24,4 +24,12 @@ struct Win32WinDimensions {
     int height;
 };
 
+struct Win32LoadedGameCode {
+    HMODULE dll_handle;
+    ptr_game_fill_sound_output_buffer fill_sound_output_buffer;
+    ptr_game_update_and_render update_and_render;
+};
+
+static Win32LoadedGameCode win32_load_game_code(void);
+
 #endif // WIN32_HANDMADE_H

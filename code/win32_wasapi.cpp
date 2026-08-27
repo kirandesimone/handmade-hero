@@ -1,5 +1,6 @@
 #include "win32_wasapi.h"
 
+
 // may want to set our own samples_per_sec and buffer size later
 // 1 frame == 2 samples (1 float for left channel, 1 float for right channel) (stereo)
 void
@@ -162,4 +163,19 @@ win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, uint32
     sprintf_s(lock_buff, "Backlog: %d, Free Space: %d, WR1: %d, WR2: %d\n", rb_backlog, rb_free_space, write_region1_size, write_region2_size);
     OutputDebugStringA(lock_buff);
 #endif // BUILD_INTERNAL
+}
+
+uint32_t
+pow2_round_up(uint32_t value)
+{
+    // https://jameshfisher.com/2018/03/30/round-up-power-2/
+    value--;
+    value |= value >> 1;
+    value |= value >> 2;
+    value |= value >> 4;
+    value |= value >> 8;
+    value |= value >> 16;
+    value++;
+
+    return value;
 }
