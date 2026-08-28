@@ -11,18 +11,31 @@ static Win32LoadedGameCode
 win32_load_game_code(void)
 {
     Win32LoadedGameCode game {};
-    game.dll_handle = LoadLibrary("handmade.dll");
 
-    if (game.dll_handle) {
-        game.fill_sound_output_buffer = (
-            (ptr_game_fill_sound_output_buffer)GetProcAddress(game.dll_handle, "game_fill_sound_output_buffer")
-        );
-        game.update_and_render = (
-            (ptr_game_update_and_render)GetProcAddress(game.dll_handle, "game_update_and_render")
-        );
+    if (!game.is_stable) {
+        game.dll_handle = LoadLibrary("handmade.dll");
+
+        if (game.dll_handle) {
+            game.fill_sound_output_buffer = (
+                (ptr_game_fill_sound_output_buffer)GetProcAddress(game.dll_handle, "game_fill_sound_output_buffer")
+            );
+            game.update_and_render = (
+                (ptr_game_update_and_render)GetProcAddress(game.dll_handle, "game_update_and_render")
+            );
+        }
     }
 
     return game;
+}
+
+static void
+win32_unload_game_code(Win32LoadedGameCode &game)
+{
+    GetFileAttributesExA("handmade.dll",)
+
+    FreeLibrary(game.dll_handle);
+    game.fill_sound_output_buffer = nullptr;
+    game.update_and_render = nullptr;
 }
 
 void*
@@ -191,7 +204,6 @@ win32_window_proc(HWND win_handle, UINT msg, WPARAM wparam, LPARAM lparam)
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show)
 {
-    Win32LoadedGameCode game = win32_load_game_code();
     WNDCLASS window_class {};
     window_class.style = CS_HREDRAW | CS_VREDRAW; // Repaint the whole window instead of just the new section
     window_class.lpfnWndProc = win32_window_proc;
@@ -264,8 +276,16 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             LARGE_INTEGER last_counts;
             QueryPerformanceCounter(&last_counts);
 
+            Win32LoadedGameCode game = win32_load_game_code();
+
             // 1 iteration = 1 frame
             while (g_running) {
+
+#ifdef BUILD_INTERNAL
+                win32_unload_game_code(game);
+                game = win32_load_game_code();
+#endif // BUILD_INTERNAL
+
                 MSG msg;
                 GameControllerInput *new_keyboard = &new_input->controllers[0];
                 GameControllerInput *old_keyboard = &old_input->controllers[0];

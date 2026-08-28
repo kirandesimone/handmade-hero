@@ -1,10 +1,9 @@
 /*
  * Game layer (platform-independent) stuff
- * LOOK AT THIS https://devgex.com/en/article/00040976
  */
 
-
 #include "handmade.h"
+
 
 static void
 game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t y_offset)
@@ -24,6 +23,8 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
         row += buffer.bitmap_pitch;
     }
 }
+
+
 
 void
 game_fill_sound_output_buffer(GameSoundOutput &sound_output)

@@ -93,10 +93,22 @@ using ptr_game_fill_sound_output_buffer = void (*)(GameSoundOutput&);
 using ptr_game_update_and_render = void (*)(GameMemory&, GameSoundOutput&,
     GameInput*, BackgroundScreenBuffer&);
 
-void game_fill_sound_output_buffer(GameSoundOutput &buffer);
-void game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
+#ifdef _WIN32
+#define DLL_EXPORT __declspec(dllexport)
+#else
+#define DLL_EXPORT
+#endif// _WIN32
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+DLL_EXPORT void game_fill_sound_output_buffer(GameSoundOutput &buffer);
+DLL_EXPORT void game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
     GameInput *input, BackgroundScreenBuffer &buffer);
 
-uint32_t pow2_round_up(uint32_t value);
+#ifdef __cplusplus
+}
+#endif
 
 #endif
