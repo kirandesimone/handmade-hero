@@ -140,7 +140,7 @@ win32_playback_input(Win32State &state, GameInput *input)
 {
     unsigned long bytes_read {};
     if (ReadFile(state.file_playback_handle, input, sizeof(*input),
-            &bytes_read, NULL) == 0)
+            &bytes_read, NULL) && bytes_read == 0)
     {
         uint16_t last_playback_slot = state.input_playback_slot;
         win32_end_playback(state);
@@ -411,15 +411,19 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.down, is_key_down);
                             } else if (vk_code == 'D') {
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.right, is_key_down);
-                            } else if (vk_code == 'L') {
-                                if (win32_state.input_recording_slot == 0) {
-                                    win32_begin_recording(win32_state, 1);
-                                }
-                                else {
-                                    win32_end_recording(win32_state);
-                                    win32_begin_playback(win32_state, 1);
+                            }
+#ifdef BUILD_INTERNAL
+                            else if (vk_code == 'L') {
+                                if (is_key_down) {
+                                    if (win32_state.input_recording_slot == 0) {
+                                        win32_begin_recording(win32_state, 1);
+                                    } else {
+                                        win32_end_recording(win32_state);
+                                        win32_begin_playback(win32_state, 1);
+                                    }
                                 }
                             }
+#endif // BUILD_INTERNAL
                         }
                     } break;
                     default:

@@ -30,14 +30,14 @@ game_draw_square(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t y_o
     uint32_t top = y_offset;
     uint32_t bottom = top + 10;
     for (uint32_t px {x_offset}; px < x_offset + 10; ++px) {
-        uint8_t *row = ((uint8_t*)buffer.bitmap_mem +
+        uint8_t *pixel_addr = ((uint8_t*)buffer.bitmap_mem +
             (px * buffer.bytes_per_pixel) +
             (top * buffer.bitmap_pitch));
 
         for (uint32_t py {top}; py < bottom; ++py) {
-            uint32_t *pixel = (uint32_t*)row;
+            uint32_t *pixel = (uint32_t*)pixel_addr;
             *pixel = 0xFFFFFFFF;
-            pixel += buffer.bitmap_pitch;
+            pixel_addr += buffer.bitmap_pitch;
         }
     }
 }
@@ -98,11 +98,15 @@ game_update_and_render(GameMemory &memory, GameInput *input, BackgroundScreenBuf
     }
 
     if (input0.Input.Buttons.up.ended_down) {
-        state->y_offset -= 10;
+        state->py_offset -= 10;
+    }
+
+    if (input0.Input.Buttons.down.ended_down) {
+        state->py_offset += 10;
     }
 
     if (input0.Input.Buttons.right.ended_down) {
-        state->px_offset++;
+        state->px_offset += 10;
     }
 
     void *file_memory = memory.read_file_func("test.txt");
