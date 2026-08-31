@@ -26,9 +26,23 @@ struct Win32WinDimensions {
 
 struct Win32LoadedGameCode {
     HMODULE dll_handle;
+
     ptr_game_fill_sound_output_buffer fill_sound_output_buffer;
     ptr_game_update_and_render update_and_render;
+
+    FILETIME last_write_time;
+
     bool is_stable;
+};
+
+struct Win32State {
+    void *file_record_handle;
+    void *file_playback_handle;
+    // if we want to same more than one inputs we need more slots
+    uint16_t input_recording_slot;
+    uint16_t input_playback_slot;
+    bool is_recording;
+    bool is_playback;
 };
 
 static Win32LoadedGameCode win32_load_game_code(void);

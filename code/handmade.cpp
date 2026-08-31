@@ -24,7 +24,23 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
     }
 }
 
+static void
+game_draw_square(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t y_offset)
+{
+    uint32_t top = y_offset;
+    uint32_t bottom = top + 10;
+    for (uint32_t px {x_offset}; px < x_offset + 10; ++px) {
+        uint8_t *row = ((uint8_t*)buffer.bitmap_mem +
+            (px * buffer.bytes_per_pixel) +
+            (top * buffer.bitmap_pitch));
 
+        for (uint32_t py {top}; py < bottom; ++py) {
+            uint32_t *pixel = (uint32_t*)row;
+            *pixel = 0xFFFFFFFF;
+            pixel += buffer.bitmap_pitch;
+        }
+    }
+}
 
 void
 game_fill_sound_output_buffer(GameSoundOutput &sound_output)
@@ -62,13 +78,14 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
 }
 
 void
-game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
-    GameInput *input, BackgroundScreenBuffer &buffer)
+game_update_and_render(GameMemory &memory, GameInput *input, BackgroundScreenBuffer &buffer)
 {
     GameState *state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
         state->x_offset = 0;
         state->y_offset = 0;
+        state->px_offset = 100;
+        state->py_offset = 100;
         memory.is_initialized = true;
     }
 
@@ -81,10 +98,14 @@ game_update_and_render(GameMemory &memory, GameSoundOutput &sound_output,
     }
 
     if (input0.Input.Buttons.up.ended_down) {
-        state->y_offset--;
+        state->y_offset -= 10;
+    }
+
+    if (input0.Input.Buttons.right.ended_down) {
+        state->px_offset++;
     }
 
     void *file_memory = memory.read_file_func("test.txt");
-    game_fill_sound_output_buffer(sound_output);
     game_render_gradient(buffer, state->x_offset, state->y_offset);
+    game_draw_square(buffer, state->px_offset, state->py_offset);
 }

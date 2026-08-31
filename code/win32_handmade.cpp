@@ -1,4 +1,5 @@
 #include "win32_handmade.h"
+#include "handmade.h"
 
 // Globals
 static bool g_running;
@@ -7,13 +8,27 @@ static Win32Audio g_audio;
 static LARGE_INTEGER g_performance_freq;
 
 
+// =====================================================
+// HOT RELOADING
+// =====================================================
+inline static FILETIME
+win32_get_file_attr(void)
+{
+    WIN32_FILE_ATTRIBUTE_DATA file_data {};
+    int32_t res = GetFileAttributesExA("handmade.dll", GetFileExInfoStandard, &file_data);
+    return file_data.ftLastWriteTime;
+}
+
 static Win32LoadedGameCode
 win32_load_game_code(void)
 {
     Win32LoadedGameCode game {};
 
+    game.last_write_time = win32_get_file_attr();
+
     if (!game.is_stable) {
-        game.dll_handle = LoadLibrary("handmade.dll");
+        CopyFile("handmade.dll", "game_handmade.dll", FALSE);
+        game.dll_handle = LoadLibrary("game_handmade.dll");
 
         if (game.dll_handle) {
             game.fill_sound_output_buffer = (
@@ -31,13 +46,16 @@ win32_load_game_code(void)
 static void
 win32_unload_game_code(Win32LoadedGameCode &game)
 {
-    GetFileAttributesExA("handmade.dll",)
-
     FreeLibrary(game.dll_handle);
+
     game.fill_sound_output_buffer = nullptr;
     game.update_and_render = nullptr;
+    game.is_stable = false;
 }
 
+// =============================================================
+// FILE I/O
+// =============================================================
 void*
 DEBUGplatform_read_entire_file(const char *filename)
 {
@@ -74,13 +92,75 @@ DEBUGplatform_free_file(void *memory)
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
-void
+static void
+win32_begin_recording(Win32State &state, uint16_t recording_slot)
+{
+    state.is_recording = true;
+    state.input_recording_slot = recording_slot;
+    state.file_record_handle = CreateFile("recording.hmi",
+        GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+}
+
+static void
+win32_end_recording(Win32State &state)
+{
+    state.is_recording = false;
+    state.input_recording_slot = 0;
+    CloseHandle(state.file_record_handle);
+}
+
+static void
+win32_begin_playback(Win32State &state, uint16_t playback_slot)
+{
+    state.is_playback = true;
+    state.input_playback_slot = playback_slot;
+    state.file_playback_handle = CreateFile("recording.hmi",
+           GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+           FILE_ATTRIBUTE_NORMAL, NULL);
+}
+
+static void
+win32_end_playback(Win32State &state)
+{
+    state.is_playback = false;
+    state.input_playback_slot = 0;
+    CloseHandle(state.file_playback_handle);
+}
+
+static void
+win32_record_input(Win32State &state, const GameInput *input)
+{
+    unsigned long bytes_written {};
+    WriteFile(state.file_record_handle, input, sizeof(*input),
+        &bytes_written, NULL);
+}
+
+static void
+win32_playback_input(Win32State &state, GameInput *input)
+{
+    unsigned long bytes_read {};
+    if (ReadFile(state.file_playback_handle, input, sizeof(*input),
+            &bytes_read, NULL) == 0)
+    {
+        uint16_t last_playback_slot = state.input_playback_slot;
+        win32_end_playback(state);
+        win32_begin_playback(state, last_playback_slot);
+    }
+}
+
+// ==============================================
+// INPUT PROCESSING
+// ==============================================
+static void
 win32_process_keyboard_event(GameButtonState &button, bool is_down)
 {
     button.ended_down = is_down;
     ++button.half_transition_state;
 }
 
+// ===============================================
+// RENDERING
+// ===============================================
 static void
 win32_debug_draw_audio_frame(uint32_t frame_pixel_col, int32_t top, int32_t bottom)
 {
@@ -112,6 +192,17 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
     }
 }
 
+static void
+win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
+{
+    StretchDIBits(dest_device_context, 0, 0, win_width, win_height, 0, 0,
+                buffer.bitmap_width, buffer.bitmap_height, buffer.bitmap_mem,
+                &buffer.bitmap_info, DIB_RGB_COLORS, SRCCOPY);
+}
+
+// ==============================================
+// WINDOW UTILS
+// ==============================================
 static Win32WinDimensions
 win32_get_win_dimensions(HWND win_handle)
 {
@@ -145,14 +236,6 @@ win32_resize_DIB_section(Win32Buffer &buffer, int win_height, int win_width)
 
     int bitmap_size {buffer.bitmap_width * buffer.bitmap_height * buffer.bytes_per_pixel};
     buffer.bitmap_mem = VirtualAlloc(NULL, bitmap_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-}
-
-static void
-win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
-{
-    StretchDIBits(dest_device_context, 0, 0, win_width, win_height, 0, 0,
-                buffer.bitmap_width, buffer.bitmap_height, buffer.bitmap_mem,
-                &buffer.bitmap_info, DIB_RGB_COLORS, SRCCOPY);
 }
 
 LRESULT
@@ -201,6 +284,9 @@ win32_window_proc(HWND win_handle, UINT msg, WPARAM wparam, LPARAM lparam)
     return res;
 }
 
+// ============================================
+// MAIN ENTRY
+// ============================================
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show)
 {
@@ -277,15 +363,17 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             QueryPerformanceCounter(&last_counts);
 
             Win32LoadedGameCode game = win32_load_game_code();
+            Win32State win32_state {};
 
             // 1 iteration = 1 frame
             while (g_running) {
-
 #ifdef BUILD_INTERNAL
-                win32_unload_game_code(game);
-                game = win32_load_game_code();
+                FILETIME curr_time = win32_get_file_attr();
+                if (CompareFileTime(&curr_time, &game.last_write_time) != 0) {
+                    win32_unload_game_code(game);
+                    game = win32_load_game_code();
+                }
 #endif // BUILD_INTERNAL
-
                 MSG msg;
                 GameControllerInput *new_keyboard = &new_input->controllers[0];
                 GameControllerInput *old_keyboard = &old_input->controllers[0];
@@ -323,6 +411,14 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.down, is_key_down);
                             } else if (vk_code == 'D') {
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.right, is_key_down);
+                            } else if (vk_code == 'L') {
+                                if (win32_state.input_recording_slot == 0) {
+                                    win32_begin_recording(win32_state, 1);
+                                }
+                                else {
+                                    win32_end_recording(win32_state);
+                                    win32_begin_playback(win32_state, 1);
+                                }
                             }
                         }
                     } break;
@@ -342,10 +438,20 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
 
-                game.update_and_render(memory, sound_output, new_input, buffer);
+                game.fill_sound_output_buffer(sound_output);
 
                 uint32_t bytes_written = sound_output.region1_size + sound_output.region2_size;
                 win32_audio_unlock_buffer(g_audio, bytes_written);
+
+                if (win32_state.is_recording) {
+                    win32_record_input(win32_state, new_input);
+                }
+
+                if (win32_state.is_playback) {
+                    win32_playback_input(win32_state, new_input);
+                }
+
+                game.update_and_render(memory, new_input, buffer);
 
                 HDC dest_dc = GetDC(window_handle);
 
