@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set COMPILER_FLAGS=-std:c++20 -DBUILD_INTERNAL=1 -nologo -WX -W4 -wd4100 -wd4189 -Zi
+set COMPILER_FLAGS=-std:c++20 -DBUILD_INTERNAL=1 -nologo -WX -W4 -wd4100 -wd4189 -wd4505 -Zi
 set LIBS=User32.lib Gdi32.lib Ole32.lib Avrt.lib
 
 mkdir ..\build

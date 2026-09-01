@@ -36,8 +36,10 @@ struct Win32LoadedGameCode {
 };
 
 struct Win32State {
+    void *game_memory_block;
     void *file_record_handle;
     void *file_playback_handle;
+    uint64_t game_memory_size;
     // if we want to same more than one inputs we need more slots
     uint16_t input_recording_slot;
     uint16_t input_playback_slot;

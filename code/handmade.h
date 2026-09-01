@@ -86,8 +86,8 @@ struct GameMemory {
 struct GameState {
     uint32_t x_offset;
     uint32_t y_offset;
-    uint32_t py_offset;
-    uint32_t px_offset;
+    int32_t py_offset;
+    int32_t px_offset;
 };
 
 

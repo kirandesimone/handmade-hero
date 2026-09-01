@@ -99,6 +99,10 @@ win32_begin_recording(Win32State &state, uint16_t recording_slot)
     state.input_recording_slot = recording_slot;
     state.file_record_handle = CreateFile("recording.hmi",
         GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    unsigned long bytes_written {};
+
+    WriteFile(state.file_record_handle, state.game_memory_block,
+        (unsigned long)state.game_memory_size, &bytes_written, NULL);
 }
 
 static void
@@ -117,6 +121,10 @@ win32_begin_playback(Win32State &state, uint16_t playback_slot)
     state.file_playback_handle = CreateFile("recording.hmi",
            GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
            FILE_ATTRIBUTE_NORMAL, NULL);
+    unsigned long bytes_read {};
+
+    ReadFile(state.file_playback_handle, state.game_memory_block,
+        (unsigned long)state.game_memory_size, &bytes_read, NULL);
 }
 
 static void
@@ -314,36 +322,40 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
         if (window_handle) {
             win32_init_wasapi(&g_audio, 0, hns_wasapi_buffer_duration);
             g_audio.client->Start();
+
             g_running = true;
             uint32_t debug_play_cursor_index = 0;
             uint32_t debug_play_cursors[15] {};
+            Win32State win32_state {};
 
             // NOTE: Might have to move if we ever allow audio endpoint to change
             GameSoundOutput sound_output {};
             sound_output.channel_count = static_cast<uint8_t>(g_audio.wave_fmt->nChannels);
             sound_output.tone_hz = 256;
             sound_output.running_frame_index = 0;
-            sound_output.volume = 0.3f;
+            // VOLUME IS OFF change to .3 to turn it on
+            sound_output.volume = 0.0f;
             sound_output.samples_per_sec = g_audio.wave_fmt->nSamplesPerSec;
             sound_output.frame_size = g_audio.wave_fmt->nBlockAlign;
 
             // Memory allocation
-            void *starting_address = NULL;
+            void *base_address = NULL;
 
 #ifdef BUILD_INTERNAL
             // we always want the memory to start here for dev builds
-            starting_address = reinterpret_cast<void *>(TEBIBYTES(2));
+            base_address = reinterpret_cast<void *>(TEBIBYTES(2));
 #endif
 
             constexpr uint64_t persistent_mem_size = MEBIBYTES(64);
-            constexpr uint64_t transient_mem_size = GIBIBYTES(4);
-            constexpr uint64_t total_mem_size = persistent_mem_size + transient_mem_size;
+            constexpr uint64_t transient_mem_size = GIBIBYTES(1);
+            win32_state.game_memory_size = persistent_mem_size + transient_mem_size;
+            win32_state.game_memory_block = VirtualAlloc(base_address, win32_state.game_memory_size,
+                           MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             GameMemory memory {};
             memory.persistent_storage_size = persistent_mem_size;
             memory.transient_storage_size = transient_mem_size;
-            memory.persistent_storage = VirtualAlloc(starting_address, total_mem_size,
-                MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            memory.persistent_storage = win32_state.game_memory_block;
             memory.transient_storage = reinterpret_cast<uint8_t*>(memory.persistent_storage) +
                 memory.persistent_storage_size;
 
@@ -363,7 +375,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             QueryPerformanceCounter(&last_counts);
 
             Win32LoadedGameCode game = win32_load_game_code();
-            Win32State win32_state {};
 
             // 1 iteration = 1 frame
             while (g_running) {
@@ -482,14 +493,17 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 Win32WinDimensions dimensions = win32_get_win_dimensions(window_handle);
 
 #ifdef BUILD_INTERNAL
+/*
                 win32_debug_display_audio(debug_play_cursors, ARRAY_SIZE(debug_play_cursors),
                     sound_output, target_seconds_per_frame);
+*/
 #endif // BUILD_INTERNAL
 
                 win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dest_dc);
 
 #ifdef BUILD_INTERNAL
+/*
                 {
                     uint32_t padding {};
                     g_audio.client->GetCurrentPadding(&padding);
@@ -505,6 +519,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     sprintf_s(msecs_per_frame_buff, "Milliseconds/frame: %.6f / %.6f FPS\n", msecs_per_frame, fps);
                     OutputDebugStringA(msecs_per_frame_buff);
                 }
+*/
 #endif // BUILD_INTERNAL
             }
         }

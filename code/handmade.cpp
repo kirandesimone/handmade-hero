@@ -16,7 +16,7 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
             uint8_t green = static_cast<uint8_t>(x + x_offset);
             uint8_t blue  = static_cast<uint8_t>(y + y_offset);
 
-            *pixel = (green << 8) | blue;
+            *pixel = (green << 16) | blue;
             pixel++;
         }
 
@@ -25,16 +25,25 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
 }
 
 static void
-game_draw_square(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t y_offset)
+game_draw_square(BackgroundScreenBuffer &buffer, int32_t &x_offset, int32_t &y_offset)
 {
-    uint32_t top = y_offset;
-    uint32_t bottom = top + 10;
-    for (uint32_t px {x_offset}; px < x_offset + 10; ++px) {
+    if (y_offset < 0) {
+        y_offset = buffer.bitmap_height - 20;
+    }
+
+    if (x_offset >= buffer.bitmap_width) {
+        x_offset = 10;
+    }
+
+    int32_t top = y_offset;
+    int32_t bottom = top + 10;
+
+    for (int32_t px {x_offset}; px < x_offset + 10; ++px) {
         uint8_t *pixel_addr = ((uint8_t*)buffer.bitmap_mem +
             (px * buffer.bytes_per_pixel) +
             (top * buffer.bitmap_pitch));
 
-        for (uint32_t py {top}; py < bottom; ++py) {
+        for (int32_t py {top}; py < bottom; ++py) {
             uint32_t *pixel = (uint32_t*)pixel_addr;
             *pixel = 0xFFFFFFFF;
             pixel_addr += buffer.bitmap_pitch;
