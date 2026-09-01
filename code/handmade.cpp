@@ -118,6 +118,10 @@ game_update_and_render(GameMemory &memory, GameInput *input, BackgroundScreenBuf
         state->px_offset += 10;
     }
 
+    if (input0.Input.Buttons.left.ended_down) {
+        state->px_offset -=10;
+    }
+
     void *file_memory = memory.read_file_func("test.txt");
     game_render_gradient(buffer, state->x_offset, state->y_offset);
     game_draw_square(buffer, state->px_offset, state->py_offset);

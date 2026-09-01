@@ -203,7 +203,7 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
 static void
 win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
 {
-    StretchDIBits(dest_device_context, 0, 0, win_width, win_height, 0, 0,
+    StretchDIBits(dest_device_context, 0, 0, buffer.bitmap_width, buffer.bitmap_height, 0, 0,
                 buffer.bitmap_width, buffer.bitmap_height, buffer.bitmap_mem,
                 &buffer.bitmap_info, DIB_RGB_COLORS, SRCCOPY);
 }
@@ -303,7 +303,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
     window_class.lpfnWndProc = win32_window_proc;
     window_class.hInstance = instance;
     window_class.lpszClassName = "HandmadeWindowClass";
-    win32_resize_DIB_section(g_back_buffer, 1280, 720);
+    win32_resize_DIB_section(g_back_buffer, 720, 1280);
 
     QueryPerformanceFrequency(&g_performance_freq);
 
@@ -430,7 +430,15 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                                         win32_begin_recording(win32_state, 1);
                                     } else {
                                         win32_end_recording(win32_state);
+                                    }
+                                }
+                            } else if (vk_code == 'P') {
+                                if (is_key_down) {
+                                    if (win32_state.input_playback_slot == 0) {
                                         win32_begin_playback(win32_state, 1);
+                                    }
+                                    else {
+                                        win32_end_playback(win32_state);
                                     }
                                 }
                             }
