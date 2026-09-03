@@ -52,7 +52,7 @@ game_draw_square(BackgroundScreenBuffer &buffer, int32_t &x_offset, int32_t &y_o
 }
 
 void
-game_fill_sound_output_buffer(GameSoundOutput &sound_output)
+game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_output)
 {
     // tone_hz = roughly the hz(cycles per sec) for middle C
     // wave_period = how many frames it takes to complete one whole cycle of the tone
@@ -87,7 +87,8 @@ game_fill_sound_output_buffer(GameSoundOutput &sound_output)
 }
 
 void
-game_update_and_render(GameMemory &memory, GameInput *input, BackgroundScreenBuffer &buffer)
+game_update_and_render(ThreadContext &thread, GameMemory &memory,
+    GameInput *input, BackgroundScreenBuffer &buffer)
 {
     GameState *state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {

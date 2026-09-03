@@ -15,6 +15,9 @@ static constexpr uint64_t MEBIBYTES(uint64_t value) {return KIBIBYTES(value) * 1
 static constexpr uint64_t GIBIBYTES(uint64_t value) {return MEBIBYTES(value) * 1024;};
 static constexpr uint64_t TEBIBYTES(uint64_t value) {return GIBIBYTES(value) * 1024;};
 
+struct ThreadContext {
+    int placeholder;
+};
 
 struct BackgroundScreenBuffer {
     void *bitmap_mem;
@@ -57,6 +60,11 @@ struct GameControllerInput {
 };
 
 struct GameInput {
+    int32_t mouse_x;
+    int32_t mouse_y;
+    int32_t mouse_z;
+    GameButtonState mouse_buttons[5];
+
     GameControllerInput controllers[4];
 };
 
@@ -91,8 +99,9 @@ struct GameState {
 };
 
 
-using ptr_game_fill_sound_output_buffer = void (*)(GameSoundOutput&);
-using ptr_game_update_and_render = void (*)(GameMemory&, GameInput*, BackgroundScreenBuffer&);
+using ptr_game_fill_sound_output_buffer = void (*)(ThreadContext &, GameSoundOutput &);
+using ptr_game_update_and_render = void (*)(ThreadContext &, GameMemory &,
+    GameInput *, BackgroundScreenBuffer &);
 
 #ifdef _WIN32
 #define DLL_EXPORT __declspec(dllexport)
@@ -104,8 +113,9 @@ using ptr_game_update_and_render = void (*)(GameMemory&, GameInput*, BackgroundS
 extern "C" {
 #endif
 
-DLL_EXPORT void game_fill_sound_output_buffer(GameSoundOutput &buffer);
-DLL_EXPORT void game_update_and_render(GameMemory &memory, GameInput *input, BackgroundScreenBuffer &buffer);
+DLL_EXPORT void game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &buffer);
+DLL_EXPORT void game_update_and_render(ThreadContext &thread, GameMemory &memory,
+    GameInput *input, BackgroundScreenBuffer &buffer);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,7 @@
 #include "win32_handmade.h"
 #include "handmade.h"
+#include <memoryapi.h>
+#include <winuser.h>
 
 // Globals
 static bool g_running;
@@ -93,67 +95,62 @@ DEBUGplatform_free_file(void *memory)
 }
 
 static void
-win32_begin_recording(Win32State &state, uint16_t recording_slot)
+win32_begin_recording(Win32State &state)
 {
-    state.is_recording = true;
-    state.input_recording_slot = recording_slot;
-    state.file_record_handle = CreateFile("recording.hmi",
-        GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    unsigned long bytes_written {};
-
-    WriteFile(state.file_record_handle, state.game_memory_block,
-        (unsigned long)state.game_memory_size, &bytes_written, NULL);
+    uint64_t input_size = MEBIBYTES(4);
+    state.recording.is_recording = true;
+    state.recording.memory = VirtualAlloc(NULL, state.game_memory_size + input_size,
+        MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    // Maybe only write the actual amount of memory thats stored
+    RtlCopyMemory(state.recording.memory, state.game_memory_block, state.game_memory_size);
 }
 
 static void
 win32_end_recording(Win32State &state)
 {
-    state.is_recording = false;
-    state.input_recording_slot = 0;
-    CloseHandle(state.file_record_handle);
+    state.recording.is_recording = false;
 }
 
 static void
-win32_begin_playback(Win32State &state, uint16_t playback_slot)
+win32_begin_playback(Win32State &state)
 {
-    state.is_playback = true;
-    state.input_playback_slot = playback_slot;
-    state.file_playback_handle = CreateFile("recording.hmi",
-           GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-           FILE_ATTRIBUTE_NORMAL, NULL);
-    unsigned long bytes_read {};
-
-    ReadFile(state.file_playback_handle, state.game_memory_block,
-        (unsigned long)state.game_memory_size, &bytes_read, NULL);
+    state.recording.is_playbacking = true;
+    state.game_memory_block_holder = state.game_memory_block;
+    state.game_memory_block = state.recording.memory;
 }
 
 static void
 win32_end_playback(Win32State &state)
 {
-    state.is_playback = false;
-    state.input_playback_slot = 0;
-    CloseHandle(state.file_playback_handle);
+    state.recording.is_playbacking = false;
+    state.recording.input_count = 0;
+    state.game_memory_block = state.game_memory_block_holder;
+    state.game_memory_block_holder = nullptr;
+    VirtualFree(state.recording.memory, 0, MEM_RELEASE);
 }
 
 static void
 win32_record_input(Win32State &state, const GameInput *input)
 {
-    unsigned long bytes_written {};
-    WriteFile(state.file_record_handle, input, sizeof(*input),
-        &bytes_written, NULL);
+    void *base_addr = (void *)(
+        (uint8_t*)state.game_memory_block + state.game_memory_size +
+        sizeof(*input) * state.recording.input_count);
+    RtlCopyMemory(base_addr, input, sizeof(*input));
 }
 
 static void
 win32_playback_input(Win32State &state, GameInput *input)
 {
-    unsigned long bytes_read {};
-    if (ReadFile(state.file_playback_handle, input, sizeof(*input),
-            &bytes_read, NULL) && bytes_read == 0)
-    {
-        uint16_t last_playback_slot = state.input_playback_slot;
-        win32_end_playback(state);
-        win32_begin_playback(state, last_playback_slot);
+    void *base_addr = (void*)(
+        (uint8_t*)state.game_memory_block + state.game_memory_size +
+        sizeof(*input) * state.recording.curr_input);
+
+    if (state.recording.curr_input >= state.recording.input_count) {
+        base_addr = (void*)((uint8_t*)state.game_memory_block + state.game_memory_size);
+        state.recording.curr_input = 0;
     }
+
+    input = (GameInput*)base_addr;
 }
 
 // ==============================================
@@ -309,9 +306,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
     constexpr uint32_t hns_wasapi_buffer_duration = 100000;
     // TODO: Need to query monitor refresh rate through Windows
-    constexpr uint32_t monitor_refresh_hz = 60;
-    constexpr uint32_t game_refresh_hz = monitor_refresh_hz / 2;
-    constexpr float target_seconds_per_frame = 1.0f / game_refresh_hz;
+
 
     if (RegisterClass(&window_class)) {
         HWND window_handle = CreateWindowEx(
@@ -320,6 +315,18 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, instance, 0);
 
         if (window_handle) {
+            int32_t monitor_refresh_hz = 60;
+            HDC dc = GetDC(window_handle);
+            int32_t win32_monitor_refresh_rate = GetDeviceCaps(dc, VREFRESH);
+            ReleaseDC(window_handle, dc);
+
+            if (win32_monitor_refresh_rate > 1) {
+                monitor_refresh_hz = win32_monitor_refresh_rate;
+            }
+
+            float game_refresh_hz = monitor_refresh_hz / 2.0f;
+            float target_seconds_per_frame = 1.0f / game_refresh_hz;
+
             win32_init_wasapi(&g_audio, 0, hns_wasapi_buffer_duration);
             g_audio.client->Start();
 
@@ -379,12 +386,14 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             // 1 iteration = 1 frame
             while (g_running) {
 #ifdef BUILD_INTERNAL
+                // DETERMINE DLL LOADING
                 FILETIME curr_time = win32_get_file_attr();
                 if (CompareFileTime(&curr_time, &game.last_write_time) != 0) {
                     win32_unload_game_code(game);
                     game = win32_load_game_code();
                 }
 #endif // BUILD_INTERNAL
+
                 MSG msg;
                 GameControllerInput *new_keyboard = &new_input->controllers[0];
                 GameControllerInput *old_keyboard = &old_input->controllers[0];
@@ -393,13 +402,21 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     new_keyboard->Input.buttons_array[button_i].ended_down =
                         old_keyboard->Input.buttons_array[button_i].ended_down;
                 }
-
+/*
+                POINT mouse_pos {};
+                GetCursorPos(&mouse_pos);
+                ScreenToClient(window_handle, &mouse_pos);
+                new_input->mouse_x = mouse_pos.x;
+                new_input->mouse_y = mouse_pos.y;
+*/
                 while (PeekMessage(&msg, window_handle, 0, 0, PM_REMOVE)) {
                     if (msg.message == WM_QUIT) {
                         g_running = false;
                     }
 
                     switch (msg.message) {
+                    case WM_LBUTTONDOWN:
+                    case WM_LBUTTONUP:
                     case WM_KEYDOWN:
                     case WM_KEYUP:
                     case WM_SYSKEYDOWN:
@@ -413,9 +430,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                             } else if (vk_code == VK_RIGHT) {
                             } else if (vk_code == VK_UP) {
                             } else if (vk_code == VK_DOWN) {
+                            } else if (vk_code == VK_LBUTTON) {
+                                win32_process_keyboard_event(new_input->mouse_buttons[0], is_key_down);
+                            } else if (vk_code == VK_RBUTTON) {
+                                win32_process_keyboard_event(new_input->mouse_buttons[1], is_key_down);
                             } else if (vk_code == 'W') {
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.up, is_key_down);
-                                OutputDebugStringA("Going UP");
                             } else if (vk_code == 'A') {
                                 win32_process_keyboard_event(new_keyboard->Input.Buttons.left, is_key_down);
                             } else if (vk_code == 'S') {
@@ -426,16 +446,16 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 #ifdef BUILD_INTERNAL
                             else if (vk_code == 'L') {
                                 if (is_key_down) {
-                                    if (win32_state.input_recording_slot == 0) {
-                                        win32_begin_recording(win32_state, 1);
+                                    if (!win32_state.recording.is_recording) {
+                                        win32_begin_recording(win32_state);
                                     } else {
                                         win32_end_recording(win32_state);
                                     }
                                 }
                             } else if (vk_code == 'P') {
                                 if (is_key_down) {
-                                    if (win32_state.input_playback_slot == 0) {
-                                        win32_begin_playback(win32_state, 1);
+                                    if (!win32_state.recording.is_playbacking) {
+                                        win32_begin_playback(win32_state);
                                     }
                                     else {
                                         win32_end_playback(win32_state);
@@ -451,6 +471,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     }
                 }
 
+                ThreadContext thread {};
                 // BUFFER for RENDERING
                 BackgroundScreenBuffer buffer {};
                 buffer.bitmap_mem = g_back_buffer.bitmap_mem;
@@ -461,22 +482,20 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
 
-                game.fill_sound_output_buffer(sound_output);
+                game.fill_sound_output_buffer(thread, sound_output);
 
                 uint32_t bytes_written = sound_output.region1_size + sound_output.region2_size;
                 win32_audio_unlock_buffer(g_audio, bytes_written);
 
-                if (win32_state.is_recording) {
+                if (win32_state.recording.is_recording) {
                     win32_record_input(win32_state, new_input);
-                }
-
-                if (win32_state.is_playback) {
+                    win32_state.recording.input_count++;
+                } else if (win32_state.recording.is_playbacking) {
                     win32_playback_input(win32_state, new_input);
+                    win32_state.recording.curr_input++;
                 }
 
-                game.update_and_render(memory, new_input, buffer);
-
-                HDC dest_dc = GetDC(window_handle);
+                game.update_and_render(thread, memory, new_input, buffer);
 
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;
@@ -507,8 +526,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 */
 #endif // BUILD_INTERNAL
 
-                win32_display_buffer(dest_dc, g_back_buffer, dimensions.height, dimensions.width);
-                ReleaseDC(window_handle, dest_dc);
+                dc = GetDC(window_handle);
+                win32_display_buffer(dc, g_back_buffer, dimensions.height, dimensions.width);
+                ReleaseDC(window_handle, dc);
 
 #ifdef BUILD_INTERNAL
 /*

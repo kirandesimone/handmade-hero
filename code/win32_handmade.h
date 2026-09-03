@@ -35,16 +35,20 @@ struct Win32LoadedGameCode {
     bool is_stable;
 };
 
+struct Win32Recording {
+    void *memory;
+    uint64_t total_size;
+    uint32_t input_count;
+    uint32_t curr_input;
+    bool is_recording;
+    bool is_playbacking;
+};
+
 struct Win32State {
     void *game_memory_block;
-    void *file_record_handle;
-    void *file_playback_handle;
+    void *game_memory_block_holder;
     uint64_t game_memory_size;
-    // if we want to same more than one inputs we need more slots
-    uint16_t input_recording_slot;
-    uint16_t input_playback_slot;
-    bool is_recording;
-    bool is_playback;
+    Win32Recording recording;
 };
 
 static Win32LoadedGameCode win32_load_game_code(void);
