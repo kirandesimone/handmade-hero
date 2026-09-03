@@ -99,7 +99,8 @@ win32_begin_recording(Win32State &state)
 {
     uint64_t input_size = MEBIBYTES(4);
     state.recording.is_recording = true;
-    state.recording.memory = VirtualAlloc(NULL, state.game_memory_size + input_size,
+    state.recording.total_size = state.game_memory_size + input_size;
+    state.recording.memory = VirtualAlloc(NULL, state.recording.total_size,
         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     // Maybe only write the actual amount of memory thats stored
     RtlCopyMemory(state.recording.memory, state.game_memory_block, state.game_memory_size);
@@ -133,9 +134,10 @@ static void
 win32_record_input(Win32State &state, const GameInput *input)
 {
     void *base_addr = (void *)(
-        (uint8_t*)state.game_memory_block + state.game_memory_size +
+        (uint8_t*)state.recording.memory + state.game_memory_size +
         sizeof(*input) * state.recording.input_count);
     RtlCopyMemory(base_addr, input, sizeof(*input));
+    state.recording.input_count++;
 }
 
 static void
@@ -146,11 +148,13 @@ win32_playback_input(Win32State &state, GameInput *input)
         sizeof(*input) * state.recording.curr_input);
 
     if (state.recording.curr_input >= state.recording.input_count) {
-        base_addr = (void*)((uint8_t*)state.game_memory_block + state.game_memory_size);
+        base_addr = (void*)(
+            (uint8_t*)state.game_memory_block + state.game_memory_size);
         state.recording.curr_input = 0;
     }
 
     input = (GameInput*)base_addr;
+    state.recording.curr_input++;
 }
 
 // ==============================================
@@ -489,10 +493,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 if (win32_state.recording.is_recording) {
                     win32_record_input(win32_state, new_input);
-                    win32_state.recording.input_count++;
                 } else if (win32_state.recording.is_playbacking) {
                     win32_playback_input(win32_state, new_input);
-                    win32_state.recording.curr_input++;
                 }
 
                 game.update_and_render(thread, memory, new_input, buffer);
