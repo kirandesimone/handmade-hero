@@ -46,7 +46,6 @@ struct Win32Recording {
 
 struct Win32State {
     void *game_memory_block;
-    void *game_memory_block_holder;
     uint64_t game_memory_size;
     Win32Recording recording;
 };

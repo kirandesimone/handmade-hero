@@ -116,8 +116,8 @@ static void
 win32_begin_playback(Win32State &state)
 {
     state.recording.is_playbacking = true;
-    state.game_memory_block_holder = state.game_memory_block;
-    state.game_memory_block = state.recording.memory;
+    state.recording.curr_input = 0;
+    RtlCopyMemory(state.game_memory_block, state.recording.memory, state.game_memory_size);
 }
 
 static void
@@ -125,8 +125,6 @@ win32_end_playback(Win32State &state)
 {
     state.recording.is_playbacking = false;
     state.recording.input_count = 0;
-    state.game_memory_block = state.game_memory_block_holder;
-    state.game_memory_block_holder = nullptr;
     VirtualFree(state.recording.memory, 0, MEM_RELEASE);
 }
 
@@ -136,6 +134,7 @@ win32_record_input(Win32State &state, const GameInput *input)
     void *base_addr = (void *)(
         (uint8_t*)state.recording.memory + state.game_memory_size +
         sizeof(*input) * state.recording.input_count);
+
     RtlCopyMemory(base_addr, input, sizeof(*input));
     state.recording.input_count++;
 }
@@ -143,17 +142,16 @@ win32_record_input(Win32State &state, const GameInput *input)
 static void
 win32_playback_input(Win32State &state, GameInput *input)
 {
-    void *base_addr = (void*)(
-        (uint8_t*)state.game_memory_block + state.game_memory_size +
-        sizeof(*input) * state.recording.curr_input);
-
     if (state.recording.curr_input >= state.recording.input_count) {
-        base_addr = (void*)(
-            (uint8_t*)state.game_memory_block + state.game_memory_size);
+        RtlCopyMemory(state.game_memory_block, state.recording.memory,
+            state.game_memory_size);
         state.recording.curr_input = 0;
     }
 
-    input = (GameInput*)base_addr;
+    void *base_addr = (void*)((uint8_t*)state.recording.memory +
+        state.game_memory_size + (sizeof(*input) * state.recording.curr_input));
+
+    *input = *(GameInput*)base_addr;
     state.recording.curr_input++;
 }
 
