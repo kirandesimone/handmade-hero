@@ -112,6 +112,7 @@ win32_end_recording(Win32State &state)
     state.recording.is_recording = false;
 }
 
+// Playback the game state
 static void
 win32_begin_playback(Win32State &state)
 {
@@ -125,7 +126,11 @@ win32_end_playback(Win32State &state)
 {
     state.recording.is_playbacking = false;
     state.recording.input_count = 0;
+    state.recording.curr_input = 0;
+    state.recording.total_size = 0;
+    // Copy mem over to game state if you want to start at frame 0 after ending
     VirtualFree(state.recording.memory, 0, MEM_RELEASE);
+    state.recording.memory = nullptr;
 }
 
 static void
@@ -142,6 +147,7 @@ win32_record_input(Win32State &state, const GameInput *input)
 static void
 win32_playback_input(Win32State &state, GameInput *input)
 {
+    // Need to rewind the game state and the input
     if (state.recording.curr_input >= state.recording.input_count) {
         RtlCopyMemory(state.game_memory_block, state.recording.memory,
             state.game_memory_size);
@@ -461,6 +467,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                                     }
                                     else {
                                         win32_end_playback(win32_state);
+                                        *new_input = {};
+                                        *old_input = {};
                                     }
                                 }
                             }
