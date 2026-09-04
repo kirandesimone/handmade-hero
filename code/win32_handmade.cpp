@@ -1,7 +1,6 @@
 #include "win32_handmade.h"
 #include "handmade.h"
-#include <memoryapi.h>
-#include <winuser.h>
+
 
 // Globals
 static bool g_running;

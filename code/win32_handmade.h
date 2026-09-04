@@ -8,6 +8,8 @@
 #include <Windows.h>
 #include <winerror.h>
 #include <stdio.h>
+#include <memoryapi.h>
+#include <winuser.h>
 
 
 struct Win32Buffer {
