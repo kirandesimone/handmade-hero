@@ -20,15 +20,13 @@ win32_get_file_attr(void)
     return file_data.ftLastWriteTime;
 }
 
-static Win32LoadedGameCode
-win32_load_game_code(void)
+static void
+win32_load_game_code(Win32LoadedGameCode &game)
 {
-    Win32LoadedGameCode game {};
-
     game.last_write_time = win32_get_file_attr();
 
     if (!game.is_stable) {
-        CopyFile("handmade.dll", "game_handmade.dll", FALSE);
+        int32_t result = CopyFile("handmade.dll", "game_handmade.dll", FALSE);
         game.dll_handle = LoadLibrary("game_handmade.dll");
 
         if (game.dll_handle) {
@@ -38,10 +36,10 @@ win32_load_game_code(void)
             game.update_and_render = (
                 (ptr_game_update_and_render)GetProcAddress(game.dll_handle, "game_update_and_render")
             );
+
+            game.is_stable = true;
         }
     }
-
-    return game;
 }
 
 static void
@@ -51,6 +49,8 @@ win32_unload_game_code(Win32LoadedGameCode &game)
 
     game.fill_sound_output_buffer = nullptr;
     game.update_and_render = nullptr;
+    game.dll_handle = nullptr;
+
     game.is_stable = false;
 }
 
@@ -93,6 +93,9 @@ DEBUGplatform_free_file(void *memory)
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
+// ===========================================================
+// INPUT RECORDING AND PLAYBACK
+// ===========================================================
 static void
 win32_begin_recording(Win32State &state)
 {
@@ -170,9 +173,9 @@ win32_process_keyboard_event(GameButtonState &button, bool is_down)
     ++button.half_transition_state;
 }
 
-// ===============================================
-// RENDERING
-// ===============================================
+// ===================================================================================
+// NOT NEEDED ANYMORE
+// ===================================================================================
 static void
 win32_debug_draw_audio_frame(uint32_t frame_pixel_col, int32_t top, int32_t bottom)
 {
@@ -203,6 +206,9 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
         win32_debug_draw_audio_frame(frame_pixel_col, top, bottom);
     }
 }
+// ==========================================================================================
+// ==========================================================================================
+// ==========================================================================================
 
 static void
 win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
@@ -307,13 +313,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
     window_class.lpfnWndProc = win32_window_proc;
     window_class.hInstance = instance;
     window_class.lpszClassName = "HandmadeWindowClass";
-    win32_resize_DIB_section(g_back_buffer, 720, 1280);
+    win32_resize_DIB_section(g_back_buffer, 540, 960);
 
     QueryPerformanceFrequency(&g_performance_freq);
 
     constexpr uint32_t hns_wasapi_buffer_duration = 100000;
-    // TODO: Need to query monitor refresh rate through Windows
-
 
     if (RegisterClass(&window_class)) {
         HWND window_handle = CreateWindowEx(
@@ -338,8 +342,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             g_audio.client->Start();
 
             g_running = true;
-            uint32_t debug_play_cursor_index = 0;
-            uint32_t debug_play_cursors[15] {};
             Win32State win32_state {};
 
             // NOTE: Might have to move if we ever allow audio endpoint to change
@@ -388,22 +390,23 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
             LARGE_INTEGER last_counts;
             QueryPerformanceCounter(&last_counts);
 
-            Win32LoadedGameCode game = win32_load_game_code();
+            Win32LoadedGameCode game {};
+            win32_load_game_code(game);
 
             // 1 iteration = 1 frame
             while (g_running) {
 #ifdef BUILD_INTERNAL
-                // DETERMINE DLL LOADING
+                // DLL LOADING based on last write
                 FILETIME curr_time = win32_get_file_attr();
                 if (CompareFileTime(&curr_time, &game.last_write_time) != 0) {
                     win32_unload_game_code(game);
-                    game = win32_load_game_code();
+                    win32_load_game_code(game);
                 }
 #endif // BUILD_INTERNAL
 
-                MSG msg;
                 GameControllerInput *new_keyboard = &new_input->controllers[0];
                 GameControllerInput *old_keyboard = &old_input->controllers[0];
+                new_input->target_seconds_per_frame = target_seconds_per_frame;
 
                 for (uint32_t button_i {}; button_i < ARRAY_SIZE(new_keyboard->Input.buttons_array); ++button_i) {
                     new_keyboard->Input.buttons_array[button_i].ended_down =
@@ -416,6 +419,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 new_input->mouse_x = mouse_pos.x;
                 new_input->mouse_y = mouse_pos.y;
 */
+                MSG msg;
                 while (PeekMessage(&msg, window_handle, 0, 0, PM_REMOVE)) {
                     if (msg.message == WM_QUIT) {
                         g_running = false;
@@ -490,7 +494,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
                 win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
-
                 game.fill_sound_output_buffer(thread, sound_output);
 
                 uint32_t bytes_written = sound_output.region1_size + sound_output.region2_size;
@@ -526,13 +529,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 
                 Win32WinDimensions dimensions = win32_get_win_dimensions(window_handle);
 
-#ifdef BUILD_INTERNAL
-/*
-                win32_debug_display_audio(debug_play_cursors, ARRAY_SIZE(debug_play_cursors),
-                    sound_output, target_seconds_per_frame);
-*/
-#endif // BUILD_INTERNAL
-
                 dc = GetDC(window_handle);
                 win32_display_buffer(dc, g_back_buffer, dimensions.height, dimensions.width);
                 ReleaseDC(window_handle, dc);
@@ -540,14 +536,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
 #ifdef BUILD_INTERNAL
 /*
                 {
-                    uint32_t padding {};
-                    g_audio.client->GetCurrentPadding(&padding);
-                    uint32_t play_cursor = ((sound_output.running_frame_index) - padding) %
-                        g_audio.buffer_frame_capacity;
-                    uint32_t write_cursor = (sound_output.running_frame_index) % g_audio.buffer_frame_capacity;
-                    debug_play_cursors[debug_play_cursor_index++] = play_cursor;
-                    debug_play_cursor_index = debug_play_cursor_index % ARRAY_SIZE(debug_play_cursors);
-
                     float msecs_per_frame = (1000.0f * elapsed_counts) / g_performance_freq.QuadPart;
                     float fps = ((float)g_performance_freq.QuadPart) / elapsed_counts;
                     char msecs_per_frame_buff[256];
@@ -556,6 +544,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 }
 */
 #endif // BUILD_INTERNAL
+
             }
         }
     }

@@ -52,7 +52,7 @@ struct Win32State {
     Win32Recording recording;
 };
 
-static Win32LoadedGameCode win32_load_game_code(void);
+static void win32_load_game_code(Win32LoadedGameCode &game);
 static void win32_unload_game_code(Win32LoadedGameCode &game);
 
 #endif // WIN32_HANDMADE_H

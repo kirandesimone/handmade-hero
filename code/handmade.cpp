@@ -3,6 +3,7 @@
  */
 
 #include "handmade.h"
+#include <cstdint>
 
 
 static void
@@ -24,30 +25,53 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
     }
 }
 
-static void
-game_draw_square(BackgroundScreenBuffer &buffer, int32_t &x_offset, int32_t &y_offset)
+static int32_t
+round_float(float value)
 {
-    if (y_offset < 0) {
-        y_offset = buffer.bitmap_height - 20;
+    // change to something better
+    return (int32_t)(value + 0.5f);
+}
+
+static void
+game_draw_rectangle(BackgroundScreenBuffer &buffer,
+    float fmin_x, float fmin_y, float fmax_x, float fmax_y,
+    float red, float green, float blue)
+{
+    int32_t min_x = round_float(fmin_x);
+    int32_t max_x = round_float(fmax_x);
+    int32_t min_y = round_float(fmin_y);
+    int32_t max_y = round_float(fmax_y);
+
+    if (min_x < 0) {
+        min_x = 0;
     }
 
-    if (x_offset >= buffer.bitmap_width) {
-        x_offset = 10;
+    if (max_x >= buffer.bitmap_width) {
+        max_x = buffer.bitmap_width;
     }
 
-    int32_t top = y_offset;
-    int32_t bottom = top + 10;
+    if (min_y < 0) {
+        min_y = 0;
+    }
 
-    for (int32_t px {x_offset}; px < x_offset + 10; ++px) {
-        uint8_t *pixel_addr = ((uint8_t*)buffer.bitmap_mem +
-            (px * buffer.bytes_per_pixel) +
-            (top * buffer.bitmap_pitch));
+    if (max_y >= buffer.bitmap_height) {
+        max_y = buffer.bitmap_height;
+    }
 
-        for (int32_t py {top}; py < bottom; ++py) {
-            uint32_t *pixel = (uint32_t*)pixel_addr;
-            *pixel = 0xFFFFFFFF;
-            pixel_addr += buffer.bitmap_pitch;
+    uint32_t color = (uint32_t)((round_float(red * 255.0f) << 16) |
+                                (round_float(green * 255.0f) << 8) |
+                                (round_float(blue * 255.0f)));
+
+    uint8_t *pixel_addr = ((uint8_t*)buffer.bitmap_mem +
+        (min_x * buffer.bytes_per_pixel) +
+        (min_y * buffer.bitmap_pitch));
+
+    for (int32_t y {min_y}; y < max_y; ++y) {
+        uint32_t *pixel = (uint32_t*)pixel_addr;
+        for (int32_t x {min_x}; x < max_x; ++x) {
+            *pixel++ = color;
         }
+        pixel_addr += buffer.bitmap_pitch;
     }
 }
 
@@ -90,12 +114,8 @@ void
 game_update_and_render(ThreadContext &thread, GameMemory &memory,
     GameInput *input, BackgroundScreenBuffer &buffer)
 {
-    GameState *state = reinterpret_cast<GameState*>(memory.persistent_storage);
+    GameState *game_state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
-        state->x_offset = 0;
-        state->y_offset = 0;
-        state->px_offset = 100;
-        state->py_offset = 100;
         memory.is_initialized = true;
     }
 
@@ -104,26 +124,90 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     if (input0.is_analog) {
 
     } else {
+        float dt_player_x {};
+        float dt_player_y {};
 
+        if (input0.Input.Buttons.up.ended_down) {
+            dt_player_y = -1.0f;
+        }
+
+        if (input0.Input.Buttons.down.ended_down) {
+            dt_player_y = 1.0f;
+        }
+
+        if (input0.Input.Buttons.right.ended_down) {
+            dt_player_x = 1.0f;
+        }
+
+        if (input0.Input.Buttons.left.ended_down) {
+            dt_player_x = -1.0f;
+        }
+
+        dt_player_x *= 100.0f;
+        dt_player_y *= 100.0f;
+
+        game_state->player_x += (input->target_seconds_per_frame * dt_player_x);
+        game_state->player_y += (input->target_seconds_per_frame * dt_player_y);
     }
 
-    if (input0.Input.Buttons.up.ended_down) {
-        state->py_offset -= 10;
+    game_draw_rectangle(
+        buffer,
+        0.0f, 0.0f,
+        800.0f, 800.0f,
+        0.75f, 0.75f, 0.1f
+    );
+
+    constexpr uint32_t tilemap_height = 9;
+    constexpr uint32_t tilemap_width = 17;
+    constexpr uint32_t tile_height = 50;
+    constexpr uint32_t tile_width = 50;
+    constexpr uint32_t offset_x = 0;
+    constexpr uint32_t offset_y = 0;
+
+    uint32_t tilemap[tilemap_height][tilemap_width] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1}
+    };
+
+    for (uint32_t y {}; y < tilemap_height; ++y) {
+        for (uint32_t x {}; x < tilemap_width; ++x) {
+            uint32_t tile_id = tilemap[y][x];
+            float gray = 0.5f;
+            if (tile_id == 1) {
+                gray = 1.0f;
+            }
+
+            float min_y = (float)(offset_y + (y * tile_height));
+            float min_x = (float)(offset_x + (x * tile_width));
+            float max_y = (float)(min_y + tile_height);
+            float max_x = (float)(min_x + tile_width);
+
+            game_draw_rectangle(
+                buffer,
+                min_x, min_y,
+                max_x, max_y,
+                gray, gray, gray
+            );
+        }
     }
 
-    if (input0.Input.Buttons.down.ended_down) {
-        state->py_offset += 10;
-    }
+    // player
+    float player_width = 0.75f * tile_width;
+    float player_height = (float)tile_height;
+    float player_left_edge = game_state->player_x - 0.5f * player_width;
+    float player_top_edge = game_state->player_y - player_height;
 
-    if (input0.Input.Buttons.right.ended_down) {
-        state->px_offset += 10;
-    }
-
-    if (input0.Input.Buttons.left.ended_down) {
-        state->px_offset -=10;
-    }
-
-    void *file_memory = memory.read_file_func("test.txt");
-    game_render_gradient(buffer, state->x_offset, state->y_offset);
-    game_draw_square(buffer, state->px_offset, state->py_offset);
+    game_draw_rectangle(
+        buffer,
+        player_left_edge, player_top_edge,
+        player_left_edge + player_width, player_top_edge + player_height,
+        0.5f, 0.0f, 0.2f
+    );
 }

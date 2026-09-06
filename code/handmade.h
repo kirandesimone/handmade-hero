@@ -56,10 +56,13 @@ struct GameControllerInput {
             GameButtonState left;
         } Buttons;
     } Input;
+
     bool is_analog;
 };
 
 struct GameInput {
+    float target_seconds_per_frame;
+
     int32_t mouse_x;
     int32_t mouse_y;
     int32_t mouse_z;
@@ -92,10 +95,8 @@ struct GameMemory {
 };
 
 struct GameState {
-    uint32_t x_offset;
-    uint32_t y_offset;
-    int32_t py_offset;
-    int32_t px_offset;
+    float player_x;
+    float player_y;
 };
 
 

@@ -76,7 +76,6 @@ win32_audio_thread_main(void *audio_ptr)
     ASSERT(audio->task_handle);
 
     while (WaitForSingleObject(audio->event_handle, INFINITE) == WAIT_OBJECT_0) {
-        // uint32_t rb_free_space = g_audio.rb_size - (g_audio.rb_write_offset - g_audio.rb_read_offset);
         uint32_t padding {};
         audio->client->GetCurrentPadding(&padding);
 
@@ -117,6 +116,17 @@ win32_audio_thread_main(void *audio_ptr)
 
         audio->rb_read_offset.store(new_offset, std::memory_order_release);
     }
+   /*
+    REMOVE: debugging audio frames
+
+    uint32_t padding {};
+    g_audio.client->GetCurrentPadding(&padding);
+    uint32_t play_cursor = ((sound_output.running_frame_index) - padding) %
+        g_audio.buffer_frame_capacity;
+    uint32_t write_cursor = (sound_output.running_frame_index) % g_audio.buffer_frame_capacity;
+    debug_play_cursors[debug_play_cursor_index++] = play_cursor;
+    debug_play_cursor_index = debug_play_cursor_index % ARRAY_SIZE(debug_play_cursors);
+    */
 
     return 0;
 }
@@ -164,6 +174,7 @@ win32_audio_lock_buffer(Win32Audio &audio, GameSoundOutput &sound_output, uint32
     OutputDebugStringA(lock_buff);
 #endif // BUILD_INTERNAL
 }
+
 
 uint32_t
 pow2_round_up(uint32_t value)
