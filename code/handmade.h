@@ -22,19 +22,23 @@ struct ThreadContext {
 
 struct TileMap {
     uint32_t *tiles;
-    float origin_x;
-    float origin_y;
-    float tile_width;
-    float tile_height;
-    int32_t width;
-    int32_t height;
 };
 
 // tile maps will be stored sparsely to reduce memory waste
 struct WorldMap {
     TileMap *tile_maps;
+
     int32_t tile_map_x_count;
     int32_t tile_map_y_count;
+
+    float screen_origin_x;
+    float screen_origin_y;
+
+    int32_t tile_map_width;
+    int32_t tile_map_height;
+    float tile_map_tile_width;
+    float tile_map_tile_height;
+
 };
 
 struct BackgroundScreenBuffer {
@@ -113,6 +117,8 @@ struct GameMemory {
 };
 
 struct GameState {
+    int32_t player_tile_map_x;
+    int32_t player_tile_map_y;
     float player_x;
     float player_y;
 };

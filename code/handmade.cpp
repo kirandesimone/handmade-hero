@@ -111,9 +111,9 @@ game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_outp
 }
 
 inline static uint32_t
-get_tile_map_tile(TileMap &tile_map, int32_t x, int32_t y)
+get_tile_map_tile(WorldMap &world_map, TileMap *tile_map, int32_t x, int32_t y)
 {
-    return tile_map.tiles[y * tile_map.width + x];
+    return tile_map->tiles[y * world_map.tile_map_width + x];
 }
 
 inline static TileMap*
@@ -130,6 +130,7 @@ get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
     return tile_map;
 }
 
+/*
 static bool
 is_tile_map_coordinate_valid(TileMap &tile_map, float new_x, float new_y)
 {
@@ -147,23 +148,46 @@ is_tile_map_coordinate_valid(TileMap &tile_map, float new_x, float new_y)
 
     return is_valid;
 }
+*/
 
 static bool
 is_world_map_coordinate_valid(WorldMap &world_map, int32_t tile_map_x, int32_t tile_map_y,
-    float new_x, float new_y)
+    float new_player_screen_x, float new_player_screen_y)
 {
     bool is_valid = false;
+    int32_t new_player_tile_x = (int32_t)((new_player_screen_x - world_map.screen_origin_x) /
+        world_map.tile_map_tile_width);
+    int32_t new_player_tile_y = (int32_t)((new_player_screen_y - world_map.screen_origin_y) /
+        world_map.tile_map_tile_height);
+
+    // When the player moves off the current tile map. we need to find the next valid tile map
+    if (new_player_tile_x < 0) {
+        new_player_tile_x = world_map.tile_map_width + new_player_tile_x;
+        --tile_map_x;
+    }
+
+    if (new_player_tile_x >= world_map.tile_map_width) {
+        new_player_tile_x = world_map.tile_map_width - new_player_tile_x;
+        ++tile_map_x;
+    }
+
+    if (new_player_tile_y < 0) {
+        new_player_tile_y = world_map.tile_map_height + new_player_tile_y;
+        --tile_map_y;
+    }
+
+    if (new_player_tile_y >= world_map.tile_map_height) {
+        new_player_tile_y = world_map.tile_map_height - new_player_tile_y;
+        ++tile_map_y;
+    }
+
     TileMap *tile_map = get_tile_map(world_map, tile_map_x, tile_map_y);
 
     if (tile_map) {
-        // screen to tile mapping
-        int32_t player_tile_x = (int32_t)((new_x - tile_map->origin_x) / tile_map->tile_width);
-        int32_t player_tile_y = (int32_t)((new_y - tile_map->origin_y) / tile_map->tile_height);
-
-        if ((player_tile_x >= 0 && player_tile_x < tile_map->width) &&
-            player_tile_y >= 0 && player_tile_y < tile_map->height)
+        if ((new_player_tile_x >= 0 && new_player_tile_x < world_map.tile_map_width) &&
+            new_player_tile_y >= 0 && new_player_tile_y < world_map.tile_map_height)
         {
-            uint32_t tile_id = get_tile_map_tile(*tile_map, player_tile_x, player_tile_y);
+            uint32_t tile_id = get_tile_map_tile(world_map, tile_map, new_player_tile_x, new_player_tile_y);
             is_valid = (tile_id == 0);
         }
     }
@@ -179,11 +203,20 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     if (!memory.is_initialized) {
         game_state->player_x = 220.0f;
         game_state->player_y = 150.0f;
+        game_state->player_tile_map_x = 0;
+        game_state->player_tile_map_y = 0;
         memory.is_initialized = true;
     }
 
+    // Don't know if these are contsexpr since the function isn't
+    constexpr int32_t tile_map_x_count = 2;
+    constexpr int32_t tile_map_y_count = 2;
     constexpr int32_t tile_map_height = 9;
     constexpr int32_t tile_map_width = 17;
+    constexpr float tile_map_origin_x = 10.0f;
+    constexpr float tile_map_origin_y = 10.0f;
+    constexpr float tile_width = 56.0f;
+    constexpr float tile_height = 56.0f;
 
     uint32_t tiles00[tile_map_height][tile_map_width] = {
         {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
@@ -233,35 +266,32 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1}
     };
 
-    WorldMap world_map {};
-    TileMap tile_maps[2][2];
+    WorldMap world_map {
+        .tile_map_x_count = tile_map_x_count,
+        .tile_map_y_count = tile_map_y_count,
+        .screen_origin_x = tile_map_origin_x,
+        .screen_origin_y = tile_map_origin_y,
+        .tile_map_width = tile_map_width,
+        .tile_map_height = tile_map_height,
+        .tile_map_tile_width = tile_width,
+        .tile_map_tile_height = tile_height,
+    };
+
+    TileMap tile_maps[tile_map_x_count][tile_map_y_count];
 
     tile_maps[0][0].tiles = *tiles00; // access it as a 1-D array instead as 2-D (same as accessing the back buffer)
-    tile_maps[0][0].origin_x = 10.0f;
-    tile_maps[0][0].origin_y = 10.0f;
-    tile_maps[0][0].tile_width = 56.0f;
-    tile_maps[0][0].tile_height = 56.0f;
-    tile_maps[0][0].width = tile_map_width;
-    tile_maps[0][0].height = tile_map_height;
-
-    tile_maps[0][1] = tile_maps[0][0];
     tile_maps[0][1].tiles = *tiles01;
-
-    tile_maps[1][0] = tile_maps[0][0];
     tile_maps[1][0].tiles = *tiles10;
-
-    tile_maps[1][1] = tile_maps[0][0];
     tile_maps[1][1].tiles = *tiles11;
 
     world_map.tile_maps = *tile_maps;
 
-    float player_width = 0.75f * tile_map.tile_width;
-    float player_height = tile_map.tile_height;
+    float player_width = 0.75f * world_map.tile_map_tile_width;
+    float player_height = world_map.tile_map_tile_height;
 
     GameControllerInput input0 = input->controllers[0];
     // analog is controller joy stick
     if (input0.is_analog) {
-
     } else {
         // pixels per second
         float player_pixels_x {};
@@ -290,14 +320,16 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         float new_player_x = game_state->player_x + (player_pixels_x * input->target_seconds_per_frame);
         float new_player_y = game_state->player_y + (player_pixels_y * input->target_seconds_per_frame);
 
-        if (is_tilemap_coordinate_valid(tile_map, new_player_x, new_player_y) &&
-            is_tilemap_coordinate_valid(tile_map,(new_player_x - 0.5f * player_width), new_player_y) &&
-            is_tilemap_coordinate_valid(tile_map, (new_player_x + 0.5f * player_width), new_player_y))
+        if (is_world_map_coordinate_valid(world_map, game_state->player_tile_map_x, game_state->player_tile_map_y, new_player_x, new_player_y) &&
+            is_world_map_coordinate_valid(world_map, game_state->player_tile_map_x, game_state->player_tile_map_y, (new_player_x - 0.5f * player_width), new_player_y) &&
+            is_world_map_coordinate_valid(world_map, game_state->player_tile_map_x, game_state->player_tile_map_y, (new_player_x + 0.5f * player_width), new_player_y))
         {
             game_state->player_x = new_player_x;
             game_state->player_y = new_player_y;
         }
     }
+
+    TileMap *tile_map = get_tile_map(world_map, game_state->player_tile_map_x, game_state->player_tile_map_y);
 
     game_draw_rectangle(
         buffer,
@@ -307,18 +339,18 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     );
 
     // TILEMAP RENDERING
-    for (int32_t y {}; y < tile_map.height; ++y) {
-        for (int32_t x {}; x < tile_map.width; ++x) {
-            uint32_t tile_id = get_tile_map_tile(tile_map, x, y);
+    for (int32_t y {}; y < tile_map_height; ++y) {
+        for (int32_t x {}; x < tile_map_width; ++x) {
+            uint32_t tile_id = get_tile_map_tile(world_map, tile_map, x, y);
             float gray = 0.5f;
             if (tile_id == 1) {
                 gray = 1.0f;
             }
 
-            float min_y = (float)(tile_map.origin_y + (y * tile_map.tile_height));
-            float min_x = (float)(tile_map.origin_x + (x * tile_map.tile_width));
-            float max_y = (float)(min_y + tile_map.tile_height);
-            float max_x = (float)(min_x + tile_map.tile_width);
+            float min_y = (float)(tile_map_origin_y + (y * tile_height));
+            float min_x = (float)(tile_map_origin_x + (x * tile_width));
+            float max_y = (float)(min_y + tile_height);
+            float max_x = (float)(min_x + tile_width);
 
             game_draw_rectangle(
                 buffer,
