@@ -25,7 +25,7 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
     }
 }
 
-static int32_t
+inline static int32_t
 round_float(float value)
 {
     // change to something better
@@ -110,84 +110,215 @@ game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_outp
     }
 }
 
+inline static uint32_t
+get_tile_map_tile(TileMap &tile_map, int32_t x, int32_t y)
+{
+    return tile_map.tiles[y * tile_map.width + x];
+}
+
+inline static TileMap*
+get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
+{
+    TileMap *tile_map = nullptr;
+
+    if ((x >= 0 && x < world_map.tile_map_x_count) &&
+        y >= 0 && y < world_map.tile_map_y_count)
+    {
+        tile_map = &world_map.tile_maps[y * world_map.tile_map_y_count + x];
+    }
+
+    return tile_map;
+}
+
+static bool
+is_tile_map_coordinate_valid(TileMap &tile_map, float new_x, float new_y)
+{
+    // screen to tile mapping
+    int32_t player_tile_x = (int32_t)((new_x - tile_map.origin_x) / tile_map.tile_width);
+    int32_t player_tile_y = (int32_t)((new_y - tile_map.origin_y) / tile_map.tile_height);
+    bool is_valid = false;
+
+    if ((player_tile_x >= 0 && player_tile_x < tile_map.width) &&
+        player_tile_y >= 0 && player_tile_y < tile_map.height)
+    {
+        uint32_t tile_id = get_tile_map_tile(tile_map, player_tile_x, player_tile_y);
+        is_valid = (tile_id == 0);
+    }
+
+    return is_valid;
+}
+
+static bool
+is_world_map_coordinate_valid(WorldMap &world_map, int32_t tile_map_x, int32_t tile_map_y,
+    float new_x, float new_y)
+{
+    bool is_valid = false;
+    TileMap *tile_map = get_tile_map(world_map, tile_map_x, tile_map_y);
+
+    if (tile_map) {
+        // screen to tile mapping
+        int32_t player_tile_x = (int32_t)((new_x - tile_map->origin_x) / tile_map->tile_width);
+        int32_t player_tile_y = (int32_t)((new_y - tile_map->origin_y) / tile_map->tile_height);
+
+        if ((player_tile_x >= 0 && player_tile_x < tile_map->width) &&
+            player_tile_y >= 0 && player_tile_y < tile_map->height)
+        {
+            uint32_t tile_id = get_tile_map_tile(*tile_map, player_tile_x, player_tile_y);
+            is_valid = (tile_id == 0);
+        }
+    }
+
+    return is_valid;
+}
+
 void
 game_update_and_render(ThreadContext &thread, GameMemory &memory,
     GameInput *input, BackgroundScreenBuffer &buffer)
 {
     GameState *game_state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
+        game_state->player_x = 220.0f;
+        game_state->player_y = 150.0f;
         memory.is_initialized = true;
     }
 
-    GameControllerInput input0 = input->controllers[0];
-    // analog is controller joy stick
-    if (input0.is_analog) {
+    constexpr int32_t tile_map_height = 9;
+    constexpr int32_t tile_map_width = 17;
 
-    } else {
-        float dt_player_x {};
-        float dt_player_y {};
-
-        if (input0.Input.Buttons.up.ended_down) {
-            dt_player_y = -1.0f;
-        }
-
-        if (input0.Input.Buttons.down.ended_down) {
-            dt_player_y = 1.0f;
-        }
-
-        if (input0.Input.Buttons.right.ended_down) {
-            dt_player_x = 1.0f;
-        }
-
-        if (input0.Input.Buttons.left.ended_down) {
-            dt_player_x = -1.0f;
-        }
-
-        dt_player_x *= 100.0f;
-        dt_player_y *= 100.0f;
-
-        game_state->player_x += (input->target_seconds_per_frame * dt_player_x);
-        game_state->player_y += (input->target_seconds_per_frame * dt_player_y);
-    }
-
-    game_draw_rectangle(
-        buffer,
-        0.0f, 0.0f,
-        800.0f, 800.0f,
-        0.75f, 0.75f, 0.1f
-    );
-
-    constexpr uint32_t tilemap_height = 9;
-    constexpr uint32_t tilemap_width = 17;
-    constexpr uint32_t tile_height = 50;
-    constexpr uint32_t tile_width = 50;
-    constexpr uint32_t offset_x = 0;
-    constexpr uint32_t offset_y = 0;
-
-    uint32_t tilemap[tilemap_height][tilemap_width] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+    uint32_t tiles00[tile_map_height][tile_map_width] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
         {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
         {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
         {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
-        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
+        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
         {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
         {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
         {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
         {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1}
     };
 
-    for (uint32_t y {}; y < tilemap_height; ++y) {
-        for (uint32_t x {}; x < tilemap_width; ++x) {
-            uint32_t tile_id = tilemap[y][x];
+    uint32_t tiles01[tile_map_height][tile_map_width] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1}
+    };
+
+    uint32_t tiles10[tile_map_height][tile_map_width] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1}
+    };
+
+    uint32_t tiles11[tile_map_height][tile_map_width] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1}
+    };
+
+    WorldMap world_map {};
+    TileMap tile_maps[2][2];
+
+    tile_maps[0][0].tiles = *tiles00; // access it as a 1-D array instead as 2-D (same as accessing the back buffer)
+    tile_maps[0][0].origin_x = 10.0f;
+    tile_maps[0][0].origin_y = 10.0f;
+    tile_maps[0][0].tile_width = 56.0f;
+    tile_maps[0][0].tile_height = 56.0f;
+    tile_maps[0][0].width = tile_map_width;
+    tile_maps[0][0].height = tile_map_height;
+
+    tile_maps[0][1] = tile_maps[0][0];
+    tile_maps[0][1].tiles = *tiles01;
+
+    tile_maps[1][0] = tile_maps[0][0];
+    tile_maps[1][0].tiles = *tiles10;
+
+    tile_maps[1][1] = tile_maps[0][0];
+    tile_maps[1][1].tiles = *tiles11;
+
+    world_map.tile_maps = *tile_maps;
+
+    float player_width = 0.75f * tile_map.tile_width;
+    float player_height = tile_map.tile_height;
+
+    GameControllerInput input0 = input->controllers[0];
+    // analog is controller joy stick
+    if (input0.is_analog) {
+
+    } else {
+        // pixels per second
+        float player_pixels_x {};
+        float player_pixels_y {};
+
+        if (input0.Input.Buttons.up.ended_down) {
+            player_pixels_y = -1.0f;
+        }
+
+        if (input0.Input.Buttons.down.ended_down) {
+            player_pixels_y = 1.0f;
+        }
+
+        if (input0.Input.Buttons.right.ended_down) {
+            player_pixels_x = 1.0f;
+        }
+
+        if (input0.Input.Buttons.left.ended_down) {
+            player_pixels_x = -1.0f;
+        }
+
+        float speed = 64.0f;
+        player_pixels_x *= speed;
+        player_pixels_y *= speed;
+
+        float new_player_x = game_state->player_x + (player_pixels_x * input->target_seconds_per_frame);
+        float new_player_y = game_state->player_y + (player_pixels_y * input->target_seconds_per_frame);
+
+        if (is_tilemap_coordinate_valid(tile_map, new_player_x, new_player_y) &&
+            is_tilemap_coordinate_valid(tile_map,(new_player_x - 0.5f * player_width), new_player_y) &&
+            is_tilemap_coordinate_valid(tile_map, (new_player_x + 0.5f * player_width), new_player_y))
+        {
+            game_state->player_x = new_player_x;
+            game_state->player_y = new_player_y;
+        }
+    }
+
+    game_draw_rectangle(
+        buffer,
+        0.0f, 0.0f,
+        960.0f, 540.0f,
+        0.0f, 1.0f, 1.0f
+    );
+
+    // TILEMAP RENDERING
+    for (int32_t y {}; y < tile_map.height; ++y) {
+        for (int32_t x {}; x < tile_map.width; ++x) {
+            uint32_t tile_id = get_tile_map_tile(tile_map, x, y);
             float gray = 0.5f;
             if (tile_id == 1) {
                 gray = 1.0f;
             }
 
-            float min_y = (float)(offset_y + (y * tile_height));
-            float min_x = (float)(offset_x + (x * tile_width));
-            float max_y = (float)(min_y + tile_height);
-            float max_x = (float)(min_x + tile_width);
+            float min_y = (float)(tile_map.origin_y + (y * tile_map.tile_height));
+            float min_x = (float)(tile_map.origin_x + (x * tile_map.tile_width));
+            float max_y = (float)(min_y + tile_map.tile_height);
+            float max_x = (float)(min_x + tile_map.tile_width);
 
             game_draw_rectangle(
                 buffer,
@@ -198,16 +329,21 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         }
     }
 
-    // player
-    float player_width = 0.75f * tile_width;
-    float player_height = (float)tile_height;
     float player_left_edge = game_state->player_x - 0.5f * player_width;
     float player_top_edge = game_state->player_y - player_height;
 
+    // player
     game_draw_rectangle(
         buffer,
         player_left_edge, player_top_edge,
         player_left_edge + player_width, player_top_edge + player_height,
         0.5f, 0.0f, 0.2f
+    );
+
+    game_draw_rectangle(
+        buffer,
+        game_state->player_x - 5.0f, game_state->player_y - 5.0f,
+        game_state->player_x + 5.0f, game_state->player_y + 5.0f,
+        0.0f, 0.7f, 0.7f
     );
 }

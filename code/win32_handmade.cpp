@@ -213,6 +213,15 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
 static void
 win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
 {
+    int32_t back_buffer_offset_x = 10;
+    int32_t back_buffer_offset_y = 10;
+
+    // PatBlt just clears the parts our bitmap is not writing to in the window client
+    // PatBlt(dest_device_context, 0, 0, win_width, back_buffer_offset_y, BLACKNESS);
+    // PatBlt(dest_device_context, 0, 0, back_buffer_offset_x, win_height, BLACKNESS);
+    PatBlt(dest_device_context, buffer.bitmap_width, 0, win_width - buffer.bitmap_width, win_height, BLACKNESS);
+    PatBlt(dest_device_context, 0, buffer.bitmap_height, win_width, win_height - buffer.bitmap_height, BLACKNESS);
+
     StretchDIBits(dest_device_context, 0, 0, buffer.bitmap_width, buffer.bitmap_height, 0, 0,
                 buffer.bitmap_width, buffer.bitmap_height, buffer.bitmap_mem,
                 &buffer.bitmap_info, DIB_RGB_COLORS, SRCCOPY);

@@ -15,8 +15,26 @@ static constexpr uint64_t MEBIBYTES(uint64_t value) {return KIBIBYTES(value) * 1
 static constexpr uint64_t GIBIBYTES(uint64_t value) {return MEBIBYTES(value) * 1024;};
 static constexpr uint64_t TEBIBYTES(uint64_t value) {return GIBIBYTES(value) * 1024;};
 
+
 struct ThreadContext {
     int placeholder;
+};
+
+struct TileMap {
+    uint32_t *tiles;
+    float origin_x;
+    float origin_y;
+    float tile_width;
+    float tile_height;
+    int32_t width;
+    int32_t height;
+};
+
+// tile maps will be stored sparsely to reduce memory waste
+struct WorldMap {
+    TileMap *tile_maps;
+    int32_t tile_map_x_count;
+    int32_t tile_map_y_count;
 };
 
 struct BackgroundScreenBuffer {
