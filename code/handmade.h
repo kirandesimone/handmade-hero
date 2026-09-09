@@ -24,6 +24,27 @@ struct TileMap {
     uint32_t *tiles;
 };
 
+struct NormalizedWorldPosition {
+    int32_t tile_map_x;
+    int32_t tile_map_y;
+
+    int32_t tile_x;
+    int32_t tile_y;
+
+    // in pixels relative to a tile
+    float x;
+    float y;
+};
+
+struct WorldPosition {
+    int32_t tile_map_x;
+    int32_t tile_map_y;
+
+    // in pixels relative to the screen for now
+    float x;
+    float y;
+};
+
 // tile maps will be stored sparsely to reduce memory waste
 struct WorldMap {
     TileMap *tile_maps;
@@ -31,14 +52,14 @@ struct WorldMap {
     int32_t tile_map_x_count;
     int32_t tile_map_y_count;
 
-    float screen_origin_x;
-    float screen_origin_y;
+    float screen_offset_x;
+    float screen_offset_y;
 
     int32_t tile_map_width;
     int32_t tile_map_height;
+
     float tile_map_tile_width;
     float tile_map_tile_height;
-
 };
 
 struct BackgroundScreenBuffer {
@@ -117,10 +138,7 @@ struct GameMemory {
 };
 
 struct GameState {
-    int32_t player_tile_map_x;
-    int32_t player_tile_map_y;
-    float player_x;
-    float player_y;
+
 };
 
 

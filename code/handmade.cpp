@@ -3,7 +3,6 @@
  */
 
 #include "handmade.h"
-#include <cstdint>
 
 
 static void
@@ -130,58 +129,54 @@ get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
     return tile_map;
 }
 
-/*
-static bool
-is_tile_map_coordinate_valid(TileMap &tile_map, float new_x, float new_y)
+static NormalizedWorldPosition
+get_normalized_world_position(WorldMap &world_map, WorldPosition &world_pos)
 {
-    // screen to tile mapping
-    int32_t player_tile_x = (int32_t)((new_x - tile_map.origin_x) / tile_map.tile_width);
-    int32_t player_tile_y = (int32_t)((new_y - tile_map.origin_y) / tile_map.tile_height);
-    bool is_valid = false;
+    NormalizedWorldPosition norm_world_pos {};
 
-    if ((player_tile_x >= 0 && player_tile_x < tile_map.width) &&
-        player_tile_y >= 0 && player_tile_y < tile_map.height)
-    {
-        uint32_t tile_id = get_tile_map_tile(tile_map, player_tile_x, player_tile_y);
-        is_valid = (tile_id == 0);
-    }
+    norm_world_pos.tile_map_x = world_pos.tile_map_x;
+    norm_world_pos.tile_map_y = world_pos.tile_map_y;
 
-    return is_valid;
-}
-*/
+    float tile_map_relative_x = world_pos.x - world_map.screen_offset_x;
+    float tile_map_relative_y = world_pos.y - world_map.screen_offset_y;
 
-static bool
-is_world_map_coordinate_valid(WorldMap &world_map, int32_t tile_map_x, int32_t tile_map_y,
-    float new_player_screen_x, float new_player_screen_y)
-{
-    bool is_valid = false;
-    int32_t new_player_tile_x = (int32_t)((new_player_screen_x - world_map.screen_origin_x) /
-        world_map.tile_map_tile_width);
-    int32_t new_player_tile_y = (int32_t)((new_player_screen_y - world_map.screen_origin_y) /
-        world_map.tile_map_tile_height);
+    norm_world_pos.tile_x = (int32_t)(tile_map_relative_x / world_map.tile_map_tile_width);
+    norm_world_pos.tile_y = (int32_t)(tile_map_relative_y / world_map.tile_map_tile_height);
+
+    // tile relative
+    norm_world_pos.x = tile_map_relative_x - norm_world_pos.tile_x * world_map.tile_map_tile_width;
+    norm_world_pos.y = tile_map_relative_y - norm_world_pos.tile_y * world_map.tile_map_tile_height;
 
     // When the player moves off the current tile map. we need to find the next valid tile map
-    if (new_player_tile_x < 0) {
-        new_player_tile_x = world_map.tile_map_width + new_player_tile_x;
-        --tile_map_x;
+    if (new_tile_x < 0) {
+        new_tile_x = world_map.tile_map_width + new_tile_x;
+        --norm_world_pos.tile_map_x;
     }
 
-    if (new_player_tile_x >= world_map.tile_map_width) {
-        new_player_tile_x = world_map.tile_map_width - new_player_tile_x;
-        ++tile_map_x;
+    if (new_tile_x >= world_map.tile_map_width) {
+        new_tile_x = world_map.tile_map_width - new_tile_x;
+        ++norm_world_pos.tile_map_x;
     }
 
-    if (new_player_tile_y < 0) {
-        new_player_tile_y = world_map.tile_map_height + new_player_tile_y;
-        --tile_map_y;
+    if (new_tile_y < 0) {
+        new_tile_y = world_map.tile_map_height + new_tile_y;
+        --norm_world_pos.tile_map_y;
     }
 
-    if (new_player_tile_y >= world_map.tile_map_height) {
-        new_player_tile_y = world_map.tile_map_height - new_player_tile_y;
-        ++tile_map_y;
+    if (new_tile_y >= world_map.tile_map_height) {
+        new_tile_y = world_map.tile_map_height - new_tile_y;
+        ++norm_world_pos.tile_map_y;
     }
 
-    TileMap *tile_map = get_tile_map(world_map, tile_map_x, tile_map_y);
+    return norm_world_pos;
+}
+
+static bool
+is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
+{
+    bool is_valid = false;
+    NormalizedWorldPosition norm_world_pos = get_normalized_world_position(world_map, world_pos);
+    TileMap *tile_map = get_tile_map(world_map, norm_world_pos.tile_map_x, norm_world_pos.tile_map_y);
 
     if (tile_map) {
         if ((new_player_tile_x >= 0 && new_player_tile_x < world_map.tile_map_width) &&
@@ -294,28 +289,28 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     if (input0.is_analog) {
     } else {
         // pixels per second
-        float player_pixels_x {};
-        float player_pixels_y {};
+        float player_velocity_x {};
+        float player_velocity_y {};
 
         if (input0.Input.Buttons.up.ended_down) {
-            player_pixels_y = -1.0f;
+            player_y = -1.0f;
         }
 
         if (input0.Input.Buttons.down.ended_down) {
-            player_pixels_y = 1.0f;
+            player_y = 1.0f;
         }
 
         if (input0.Input.Buttons.right.ended_down) {
-            player_pixels_x = 1.0f;
+            player_x = 1.0f;
         }
 
         if (input0.Input.Buttons.left.ended_down) {
-            player_pixels_x = -1.0f;
+            player_x = -1.0f;
         }
 
         float speed = 64.0f;
-        player_pixels_x *= speed;
-        player_pixels_y *= speed;
+        player_x *= speed;
+        player_y *= speed;
 
         float new_player_x = game_state->player_x + (player_pixels_x * input->target_seconds_per_frame);
         float new_player_y = game_state->player_y + (player_pixels_y * input->target_seconds_per_frame);
