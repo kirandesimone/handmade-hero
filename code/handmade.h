@@ -138,7 +138,12 @@ struct GameMemory {
 };
 
 struct GameState {
+    int32_t player_tile_map_x;
+    int32_t player_tile_map_y;
 
+    // in pixels relative to the screen for now
+    float player_x;
+    float player_y;
 };
 
 
