@@ -154,7 +154,7 @@ get_normalized_world_position(WorldMap &world_map, WorldPosition &world_pos)
     }
 
     if (norm_world_pos.tile_x >= world_map.tile_map_width) {
-        norm_world_pos.tile_x = world_map.tile_map_width - norm_world_pos.tile_x;
+        norm_world_pos.tile_x = norm_world_pos.tile_x - world_map.tile_map_width;
         ++norm_world_pos.tile_map_x;
     }
 
@@ -164,7 +164,7 @@ get_normalized_world_position(WorldMap &world_map, WorldPosition &world_pos)
     }
 
     if (norm_world_pos.tile_y >= world_map.tile_map_height) {
-        norm_world_pos.tile_y = world_map.tile_map_height - norm_world_pos.tile_y;
+        norm_world_pos.tile_y = norm_world_pos.tile_y - world_map.tile_map_height;
         ++norm_world_pos.tile_map_y;
     }
 
@@ -334,13 +334,20 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
             is_world_map_coordinate_valid(world_map, player_pos_left_edge) &&
             is_world_map_coordinate_valid(world_map, player_pos_right_edge))
         {
-            NormalizedWorldPosition norm_world_pos =
+            NormalizedWorldPosition norm_player_pos =
                 get_normalized_world_position(world_map, player_pos);
 
-            game_state->player_tile_map_x = norm_world_pos.tile_map_x;
-            game_state->player_tile_map_y = norm_world_pos.tile_map_y;
-            game_state->player_x = new_player_x;
-            game_state->player_y = new_player_y;
+            game_state->player_tile_map_x = norm_player_pos.tile_map_x;
+            game_state->player_tile_map_y = norm_player_pos.tile_map_y;
+            // go back to screen space
+            game_state->player_x = (world_map.screen_offset_x +
+                (norm_player_pos.tile_x * world_map.tile_map_tile_width +
+                norm_player_pos.x)
+            );
+            game_state->player_y = (world_map.screen_offset_y +
+                (norm_player_pos.tile_y * world_map.tile_map_tile_height +
+                norm_player_pos.y)
+            );
         }
     }
 
