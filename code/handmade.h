@@ -1,6 +1,8 @@
 #ifndef HANDMADE_H
 #define HANDMADE_H
 
+#include "handmade_math.h"
+
 #include <cstdint>
 #include <cmath>
 
@@ -58,8 +60,8 @@ struct WorldMap {
     int32_t tile_map_width;
     int32_t tile_map_height;
 
-    float tile_map_tile_width;
-    float tile_map_tile_height;
+    float tile_pixel_length;
+    float tile_meter_length;
 };
 
 struct BackgroundScreenBuffer {
