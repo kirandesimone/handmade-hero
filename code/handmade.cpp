@@ -124,61 +124,45 @@ get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
     return tile_map;
 }
 
-static NormalizedWorldPosition
-get_normalized_world_position(WorldMap &world_map, WorldPosition &world_pos)
+inline void
+normalize_coordinate(WorldMap &world_map, int32_t tile_count, int32_t &tile_map, int32_t &tile, float &tile_rel_pos)
 {
-    NormalizedWorldPosition norm_world_pos {};
 
-    norm_world_pos.tile_map_x = world_pos.tile_map_x;
-    norm_world_pos.tile_map_y = world_pos.tile_map_y;
-
-    float tile_map_relative_x = world_pos.x - world_map.screen_offset_x;
-    float tile_map_relative_y = world_pos.y - world_map.screen_offset_y;
-
-    norm_world_pos.tile_x = floor_float(tile_map_relative_x / world_map.tile_pixel_length);
-    norm_world_pos.tile_y = floor_float(tile_map_relative_y / world_map.tile_pixel_length);
-
-    // tile relative
-    norm_world_pos.x = tile_map_relative_x - norm_world_pos.tile_x * world_map.tile_pixel_length;
-    norm_world_pos.y = tile_map_relative_y - norm_world_pos.tile_y * world_map.tile_pixel_length;
+    int32_t tile_offset = floor_float(tile_rel_pos / world_map.tile_meter_length);
+    tile += tile_offset;
+    tile_rel_pos -= tile_offset * world_map.tile_meter_length;
 
     // When the player moves off the current tile map. we need to find the next valid tile map
-    if (norm_world_pos.tile_x < 0) {
-        norm_world_pos.tile_x = world_map.tile_map_width + norm_world_pos.tile_x;
-        --norm_world_pos.tile_map_x;
+    if (tile < 0) {
+        tile = tile_count + tile;
+        --tile_map;
     }
 
-    if (norm_world_pos.tile_x >= world_map.tile_map_width) {
-        norm_world_pos.tile_x = norm_world_pos.tile_x - world_map.tile_map_width;
-        ++norm_world_pos.tile_map_x;
+    if (tile >= tile_count) {
+        tile = tile - tile_count;
+        ++tile_map;
     }
+}
 
-    if (norm_world_pos.tile_y < 0) {
-        norm_world_pos.tile_y = world_map.tile_map_height + norm_world_pos.tile_y;
-        --norm_world_pos.tile_map_y;
-    }
-
-    if (norm_world_pos.tile_y >= world_map.tile_map_height) {
-        norm_world_pos.tile_y = norm_world_pos.tile_y - world_map.tile_map_height;
-        ++norm_world_pos.tile_map_y;
-    }
-
-    return norm_world_pos;
+static void
+normalize_world_position(WorldMap &world_map, NormalizedWorldPosition &pos)
+{
+    normalize_coordinate(world_map, world_map.tile_map_width, pos.tile_map_x, pos.tile_x, pos.tile_rel_x);
+    normalize_coordinate(world_map, world_map.tile_map_height, pos.tile_map_y, pos.tile_y, pos.tile_rel_y);
 }
 
 static bool
-is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
+is_world_map_coordinate_valid(WorldMap &world_map, NormalizedWorldPosition &world_pos)
 {
     bool is_valid = false;
-    NormalizedWorldPosition norm_world_pos = get_normalized_world_position(world_map, world_pos);
-    TileMap *tile_map = get_tile_map(world_map, norm_world_pos.tile_map_x, norm_world_pos.tile_map_y);
+    TileMap *tile_map = get_tile_map(world_map, world_pos.tile_map_x, world_pos.tile_map_y);
 
     if (tile_map) {
-        if ((norm_world_pos.tile_x >= 0 && norm_world_pos.tile_x < world_map.tile_map_width) &&
-            norm_world_pos.tile_y >= 0 && norm_world_pos.tile_y < world_map.tile_map_height)
+        if ((world_pos.tile_x >= 0 && world_pos.tile_x < world_map.tile_map_width) &&
+            world_pos.tile_y >= 0 && world_pos.tile_y < world_map.tile_map_height)
         {
-            uint32_t tile_id = get_tile_map_tile(world_map, tile_map,
-                norm_world_pos.tile_x, norm_world_pos.tile_y);
+            uint32_t tile_id = get_tile_map_tile(
+                world_map, tile_map,world_pos.tile_x, world_pos.tile_y);
             is_valid = (tile_id == 0);
         }
     }
@@ -192,10 +176,13 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
 {
     GameState *game_state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
-        game_state->player_x = 220.0f;
-        game_state->player_y = 150.0f;
-        game_state->player_tile_map_x = 0;
-        game_state->player_tile_map_y = 0;
+        game_state->player_pos.tile_rel_x = 1.0f;
+        game_state->player_pos.tile_rel_y = 1.0f;
+        game_state->player_pos.tile_x = 3;
+        game_state->player_pos.tile_y = 2;
+        game_state->player_pos.tile_map_x = 0;
+        game_state->player_pos.tile_map_y = 0;
+
         memory.is_initialized = true;
     }
 
@@ -266,6 +253,7 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         .tile_map_height = tile_map_height,
         .tile_pixel_length = tile_pixel_length,
         .tile_meter_length = tile_meter_length,
+        .meters_to_pixels = tile_pixel_length / tile_meter_length,
     };
 
     TileMap tile_maps[tile_map_x_count][tile_map_y_count];
@@ -277,14 +265,14 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
 
     world_map.tile_maps = *tile_maps;
 
-    float player_width = 0.75f * world_map.tile_pixel_length;
-    float player_height = world_map.tile_pixel_length;
+    float player_width = 0.75f * world_map.tile_meter_length;
+    float player_height = world_map.tile_meter_length;
 
     GameControllerInput input0 = input->controllers[0];
     // analog is controller joy stick
     if (input0.is_analog) {
     } else {
-        float speed = 64.0f;
+        float speed = 4.0f;
         float player_x {};
         float player_y {};
 
@@ -309,44 +297,32 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         player_y *= speed;
 
         // player x and y by delta time
-        float new_player_x = game_state->player_x + (player_x * input->target_seconds_per_frame);
-        float new_player_y = game_state->player_y + (player_y * input->target_seconds_per_frame);
+        float new_player_x = game_state->player_pos.tile_rel_x + (player_x * input->target_seconds_per_frame);
+        float new_player_y = game_state->player_pos.tile_rel_y + (player_y * input->target_seconds_per_frame);
 
-        WorldPosition player_pos {
-            .tile_map_x = game_state->player_tile_map_x,
-            .tile_map_y = game_state->player_tile_map_y,
-            .x = new_player_x,
-            .y = new_player_y,
-        };
+        NormalizedWorldPosition player_pos = game_state->player_pos;
+        player_pos.tile_rel_x = new_player_x;
+        player_pos.tile_rel_y = new_player_y;
+        normalize_world_position(world_map, player_pos);
 
-        WorldPosition player_pos_left_edge = player_pos;
-        player_pos_left_edge.x = new_player_x - 0.5f * player_width;
+        NormalizedWorldPosition player_pos_left_edge = player_pos;
+        player_pos_left_edge.tile_rel_x -= 0.5f * player_width;
+        normalize_world_position(world_map, player_pos_left_edge);
 
-        WorldPosition player_pos_right_edge = player_pos;
-        player_pos_right_edge.x = new_player_x + 0.5f * player_width;
+        NormalizedWorldPosition player_pos_right_edge = player_pos;
+        player_pos_right_edge.tile_rel_x += 0.5f * player_width;
+        normalize_world_position(world_map, player_pos_right_edge);
 
         if (is_world_map_coordinate_valid(world_map, player_pos) &&
             is_world_map_coordinate_valid(world_map, player_pos_left_edge) &&
             is_world_map_coordinate_valid(world_map, player_pos_right_edge))
         {
-            NormalizedWorldPosition norm_player_pos =
-                get_normalized_world_position(world_map, player_pos);
-
-            game_state->player_tile_map_x = norm_player_pos.tile_map_x;
-            game_state->player_tile_map_y = norm_player_pos.tile_map_y;
-            // go back to screen space
-            game_state->player_x = (world_map.screen_offset_x +
-                (norm_player_pos.tile_x * world_map.tile_pixel_length +
-                norm_player_pos.x)
-            );
-            game_state->player_y = (world_map.screen_offset_y +
-                (norm_player_pos.tile_y * world_map.tile_pixel_length +
-                norm_player_pos.y)
-            );
+            game_state->player_pos = player_pos;
         }
     }
 
-    TileMap *tile_map = get_tile_map(world_map, game_state->player_tile_map_x, game_state->player_tile_map_y);
+    TileMap *tile_map = get_tile_map(
+        world_map, game_state->player_pos.tile_map_x, game_state->player_pos.tile_map_y);
 
     game_draw_rectangle(
         buffer,
@@ -379,21 +355,38 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         }
     }
 
-    float player_left_edge = game_state->player_x - 0.5f * player_width;
-    float player_top_edge = game_state->player_y - player_height;
+    // FOR DRAWING
+    float player_left_edge = (
+        world_map.screen_offset_x +
+        (world_map.tile_pixel_length * game_state->player_pos.tile_x) +
+        (world_map.meters_to_pixels * (game_state->player_pos.tile_rel_x -
+            0.5f * player_width))
+    );
+
+    float player_top_edge = (
+        world_map.screen_offset_y +
+        (world_map.tile_pixel_length * game_state->player_pos.tile_y) +
+        (world_map.meters_to_pixels * (game_state->player_pos.tile_rel_y -
+            player_height))
+    );
 
     // player
     game_draw_rectangle(
         buffer,
-        player_left_edge, player_top_edge,
-        player_left_edge + player_width, player_top_edge + player_height,
+        player_left_edge,
+        player_top_edge,
+        player_left_edge + (player_width * world_map.meters_to_pixels),
+        player_top_edge + (player_height * world_map.meters_to_pixels),
         0.5f, 0.0f, 0.2f
     );
-
+/*
     game_draw_rectangle(
         buffer,
-        game_state->player_x - 5.0f, game_state->player_y - 5.0f,
-        game_state->player_x + 5.0f, game_state->player_y + 5.0f,
+        game_state->player_pos.tile_rel_x - 5.0f,
+        game_state->player_pos.tile_rel_y - 5.0f,
+        game_state->player_pos.tile_rel_x + 5.0f,
+        game_state->player_pos.tile_rel_y + 5.0f,
         0.0f, 0.7f, 0.7f
     );
+    */
 }
