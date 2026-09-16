@@ -145,14 +145,14 @@ normalize_coordinate(WorldMap &world_map, int32_t tile_count, int32_t &tile_map,
 }
 
 static void
-normalize_world_position(WorldMap &world_map, NormalizedWorldPosition &pos)
+normalize_world_position(WorldMap &world_map, WorldPosition &pos)
 {
     normalize_coordinate(world_map, world_map.tile_map_width, pos.tile_map_x, pos.tile_x, pos.tile_rel_x);
     normalize_coordinate(world_map, world_map.tile_map_height, pos.tile_map_y, pos.tile_y, pos.tile_rel_y);
 }
 
 static bool
-is_world_map_coordinate_valid(WorldMap &world_map, NormalizedWorldPosition &world_pos)
+is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
 {
     bool is_valid = false;
     TileMap *tile_map = get_tile_map(world_map, world_pos.tile_map_x, world_pos.tile_map_y);
@@ -176,8 +176,8 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
 {
     GameState *game_state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
-        game_state->player_pos.tile_rel_x = 1.0f;
-        game_state->player_pos.tile_rel_y = 1.0f;
+        game_state->player_pos.tile_rel_x = 0.8f;
+        game_state->player_pos.tile_rel_y = 0.8f;
         game_state->player_pos.tile_x = 3;
         game_state->player_pos.tile_y = 2;
         game_state->player_pos.tile_map_x = 0;
@@ -191,10 +191,10 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     constexpr int32_t tile_map_y_count = 2;
     constexpr int32_t tile_map_height = 9;
     constexpr int32_t tile_map_width = 17;
-    constexpr float screen_offset_x = 10.0f;
-    constexpr float screen_offset_y = 10.0f;
     constexpr float tile_pixel_length = 56.0f;
     constexpr float tile_meter_length = 1.4f;
+    constexpr float screen_offset_x = 10.0f;
+    float screen_offset_y = (float)buffer.bitmap_height;
 
     uint32_t tiles00[tile_map_height][tile_map_width] = {
         {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
@@ -277,11 +277,11 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         float player_y {};
 
         if (input0.Input.Buttons.up.ended_down) {
-            player_y = -1.0f;
+            player_y = 1.0f;
         }
 
         if (input0.Input.Buttons.down.ended_down) {
-            player_y = 1.0f;
+            player_y = -1.0f;
         }
 
         if (input0.Input.Buttons.right.ended_down) {
@@ -300,16 +300,16 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         float new_player_x = game_state->player_pos.tile_rel_x + (player_x * input->target_seconds_per_frame);
         float new_player_y = game_state->player_pos.tile_rel_y + (player_y * input->target_seconds_per_frame);
 
-        NormalizedWorldPosition player_pos = game_state->player_pos;
+        WorldPosition player_pos = game_state->player_pos;
         player_pos.tile_rel_x = new_player_x;
         player_pos.tile_rel_y = new_player_y;
         normalize_world_position(world_map, player_pos);
 
-        NormalizedWorldPosition player_pos_left_edge = player_pos;
+        WorldPosition player_pos_left_edge = player_pos;
         player_pos_left_edge.tile_rel_x -= 0.5f * player_width;
         normalize_world_position(world_map, player_pos_left_edge);
 
-        NormalizedWorldPosition player_pos_right_edge = player_pos;
+        WorldPosition player_pos_right_edge = player_pos;
         player_pos_right_edge.tile_rel_x += 0.5f * player_width;
         normalize_world_position(world_map, player_pos_right_edge);
 
@@ -321,8 +321,8 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         }
     }
 
-    TileMap *tile_map = get_tile_map(
-        world_map, game_state->player_pos.tile_map_x, game_state->player_pos.tile_map_y);
+    TileMap *tile_map = get_tile_map(world_map,
+        game_state->player_pos.tile_map_x, game_state->player_pos.tile_map_y);
 
     game_draw_rectangle(
         buffer,
@@ -341,10 +341,14 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
                 gray = 1.0f;
             }
 
-            float min_y = world_map.screen_offset_y + (y * world_map.tile_pixel_length);
+            if (game_state->player_pos.tile_x  == x && game_state->player_pos.tile_y == y) {
+                gray = 0.0f;
+            }
+
             float min_x = world_map.screen_offset_x + (x * world_map.tile_pixel_length);
-            float max_y = min_y + world_map.tile_pixel_length;
+            float min_y = world_map.screen_offset_y - (y * world_map.tile_pixel_length);
             float max_x = min_x + world_map.tile_pixel_length;
+            float max_y = min_y + world_map.tile_pixel_length;
 
             game_draw_rectangle(
                 buffer,
@@ -364,10 +368,10 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     );
 
     float player_top_edge = (
-        world_map.screen_offset_y +
-        (world_map.tile_pixel_length * game_state->player_pos.tile_y) +
-        (world_map.meters_to_pixels * (game_state->player_pos.tile_rel_y -
-            player_height))
+        world_map.screen_offset_y -
+        (world_map.tile_pixel_length * game_state->player_pos.tile_y) -
+        (world_map.meters_to_pixels * game_state->player_pos.tile_rel_y) -
+        player_height
     );
 
     // player
@@ -379,7 +383,7 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         player_top_edge + (player_height * world_map.meters_to_pixels),
         0.5f, 0.0f, 0.2f
     );
-/*
+    /*
     game_draw_rectangle(
         buffer,
         game_state->player_pos.tile_rel_x - 5.0f,

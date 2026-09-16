@@ -26,7 +26,7 @@ struct TileMap {
     uint32_t *tiles;
 };
 
-struct NormalizedWorldPosition {
+struct WorldPosition {
     int32_t tile_map_x;
     int32_t tile_map_y;
 
@@ -146,7 +146,7 @@ struct GameMemory {
 };
 
 struct GameState {
-    NormalizedWorldPosition player_pos;
+    WorldPosition player_pos;
 };
 
 
