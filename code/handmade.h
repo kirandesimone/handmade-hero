@@ -27,14 +27,8 @@ struct TileMap {
 };
 
 struct WorldPosition {
-    int32_t tile_map_x;
-    int32_t tile_map_y;
-
-    int32_t tile_x;
-    int32_t tile_y;
-
-    // uint32_t tile_map_tile_x;
-    // uint32_t tile_map_tile_y;
+    int32_t tile_map_tile_x;
+    int32_t tile_map_tile_y;
 
     // in pixels relative to a tile
     float tile_rel_x;
