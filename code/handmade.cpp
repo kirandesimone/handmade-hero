@@ -125,9 +125,10 @@ get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
 }
 
 inline void
-normalize_coordinate(WorldMap &world_map, int32_t tile_count, int32_t &tile_map, int32_t &tile, float &tile_rel_pos)
+normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
 {
 
+    // assuming that our world is toroidal topology
     int32_t tile_offset = floor_float(tile_rel_pos / world_map.tile_meter_length);
     tile += tile_offset;
     tile_rel_pos -= tile_offset * world_map.tile_meter_length;

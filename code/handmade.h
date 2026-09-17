@@ -27,24 +27,14 @@ struct TileMap {
 };
 
 struct WorldPosition {
-    int32_t tile_map_tile_x;
-    int32_t tile_map_tile_y;
+    // the first 24 bits == tile map then lower 8 is tile
+    uint32_t tile_map_tile_x;
+    uint32_t tile_map_tile_y;
 
     // in pixels relative to a tile
     float tile_rel_x;
     float tile_rel_y;
 };
-
-/*
-struct WorldPosition {
-    int32_t tile_map_x;
-    int32_t tile_map_y;
-
-    // in pixels relative to the screen for now
-    float x;
-    float y;
-};
-*/
 
 // tile maps will be stored sparsely to reduce memory waste
 struct WorldMap {
