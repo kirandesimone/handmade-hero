@@ -26,12 +26,20 @@ struct TileMap {
     uint32_t *tiles;
 };
 
+// This is still world space just being queried in a granular way
+struct TileChunkPosition {
+    uint32_t x;
+    uint32_t y;
+    float rel_tile_x;
+    float rel_tile_y;
+};
+
 struct WorldPosition {
     // the first 24 bits == tile map then lower 8 is tile
     uint32_t tile_map_tile_x;
     uint32_t tile_map_tile_y;
 
-    // in pixels relative to a tile
+    // in meters relative to a tile
     float tile_rel_x;
     float tile_rel_y;
 };
@@ -46,8 +54,10 @@ struct WorldMap {
     float screen_offset_x;
     float screen_offset_y;
 
-    int32_t tile_map_width; // how mant tiles wide a tile map is
-    int32_t tile_map_height;
+    int32_t tile_chunk_size; // how many tiles wide and tall a tile chunk is
+
+    uint32_t chunk_mask;
+    uint32_t chunk_shift;
 
     float tile_pixel_length;
     float tile_meter_length;

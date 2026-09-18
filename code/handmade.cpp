@@ -107,7 +107,7 @@ game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_outp
 inline static uint32_t
 get_tile_map_tile(WorldMap &world_map, TileMap *tile_map, int32_t x, int32_t y)
 {
-    return tile_map->tiles[y * world_map.tile_map_width + x];
+    return tile_map->tiles[y * world_map.tile_chunk_size + x];
 }
 
 inline static TileMap*
@@ -127,40 +127,45 @@ get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
 inline void
 normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
 {
-
-    // assuming that our world is toroidal topology
+    // assuming that our world is toroidal topology which allows us to not care if tile wraps
     int32_t tile_offset = floor_float(tile_rel_pos / world_map.tile_meter_length);
     tile += tile_offset;
     tile_rel_pos -= tile_offset * world_map.tile_meter_length;
-
-    // When the player moves off the current tile map. we need to find the next valid tile map
-    if (tile < 0) {
-        tile = tile_count + tile;
-        --tile_map;
-    }
-
-    if (tile >= tile_count) {
-        tile = tile - tile_count;
-        ++tile_map;
-    }
 }
 
 static void
 normalize_world_position(WorldMap &world_map, WorldPosition &pos)
 {
-    normalize_coordinate(world_map, world_map.tile_map_width, pos.tile_map_x, pos.tile_x, pos.tile_rel_x);
-    normalize_coordinate(world_map, world_map.tile_map_height, pos.tile_map_y, pos.tile_y, pos.tile_rel_y);
+    normalize_coordinate(world_map, pos.tile_map_tile_x, pos.tile_rel_x);
+    normalize_coordinate(world_map, pos.tile_map_tile_y, pos.tile_rel_y);
+}
+
+// this unpacks the tile map and tile from tile_map_tile_x/y
+// maybe change to unpack_world_position??
+inline static TileChunkPosition
+get_tile_chunk_position(WorldMap &world_map, uint32_t tile_map_tile_x, uint32_t tile_map_tile_y)
+{
+    TileChunkPosition tile_chunk {};
+    tile_chunk.x = tile_map_tile_x >> world_map.chunk_shift;
+    tile_chunk.y = tile_map_tile_y >> world_map.chunk_shift;
+    tile_chunk.rel_tile_x = tile_map_tile_x & world_map.chunk_mask;
+    tile_chunk.rel_tile_y = tile_map_tile_y & world_map.chunk_mask;
+
+    return tile_chunk;
 }
 
 static bool
 is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
 {
     bool is_valid = false;
-    TileMap *tile_map = get_tile_map(world_map, world_pos.tile_map_x, world_pos.tile_map_y);
+    TileChunkPosition tile_chunk = get_tile_chunk_position(
+        world_map, world_pos.tile_map_tile_x, world_pos.tile_map_tile_y);
+
+    TileMap *tile_map = get_tile_map(world_map, tile_chunk.rel_tile_x, tile_chunk.rel_tile_y);
 
     if (tile_map) {
-        if ((world_pos.tile_x >= 0 && world_pos.tile_x < world_map.tile_map_width) &&
-            world_pos.tile_y >= 0 && world_pos.tile_y < world_map.tile_map_height)
+        if ((tile_chunk.rel_tile_x >= 0 && tile_chunk.rel_tile_x < world_map.tile_chunk_size) &&
+            tile_chunk.rel_tile_y >= 0 && tile_chunk.rel_tile_y < world_map.tile_chunk_size)
         {
             uint32_t tile_id = get_tile_map_tile(
                 world_map, tile_map,world_pos.tile_x, world_pos.tile_y);
@@ -190,8 +195,7 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     // Don't know if these are contsexpr since the function isn't
     constexpr int32_t tile_map_x_count = 2;
     constexpr int32_t tile_map_y_count = 2;
-    constexpr int32_t tile_map_height = 9;
-    constexpr int32_t tile_map_width = 17;
+    constexpr int32_t tile_chunk_size = 256;
     constexpr float tile_pixel_length = 56.0f;
     constexpr float tile_meter_length = 1.4f;
     constexpr float screen_offset_x = 10.0f;
@@ -250,8 +254,9 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         .tile_map_y_count = tile_map_y_count,
         .screen_offset_x = screen_offset_x,
         .screen_offset_y = screen_offset_y,
-        .tile_map_width = tile_map_width,
-        .tile_map_height = tile_map_height,
+        .tile_chunk_size = tile_chunk_size,
+        .chunk_mask = 0xFF,
+        .chunk_shift = 8,
         .tile_pixel_length = tile_pixel_length,
         .tile_meter_length = tile_meter_length,
         .meters_to_pixels = tile_pixel_length / tile_meter_length,
