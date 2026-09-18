@@ -4,7 +4,7 @@
 
 // Globals
 static bool g_running;
-static Win32Buffer g_back_buffer;
+static Win32BackBuffer g_back_buffer;
 static Win32Audio g_audio;
 static LARGE_INTEGER g_performance_freq;
 
@@ -211,7 +211,7 @@ win32_debug_display_audio(uint32_t *play_cursors, uint32_t play_cursors_count,
 // ==========================================================================================
 
 static void
-win32_display_buffer(HDC dest_device_context, const Win32Buffer &buffer, int win_height, int win_width)
+win32_display_buffer(HDC dest_device_context, const Win32BackBuffer &buffer, int win_height, int win_width)
 {
     int32_t back_buffer_offset_x = 10;
     int32_t back_buffer_offset_y = 10;
@@ -244,7 +244,7 @@ win32_get_win_dimensions(HWND win_handle)
 }
 
 static void
-win32_resize_DIB_section(Win32Buffer &buffer, int win_height, int win_width)
+win32_resize_DIB_section(Win32BackBuffer &buffer, int win_height, int win_width)
 {
     if (buffer.bitmap_mem) {
         VirtualFree(buffer.bitmap_mem, 0, MEM_RELEASE);
@@ -494,13 +494,13 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                 }
 
                 ThreadContext thread {};
-                // BUFFER for RENDERING
-                BackgroundScreenBuffer buffer {};
-                buffer.bitmap_mem = g_back_buffer.bitmap_mem;
-                buffer.bitmap_height = g_back_buffer.bitmap_height;
-                buffer.bitmap_width = g_back_buffer.bitmap_width;
-                buffer.bytes_per_pixel = g_back_buffer.bytes_per_pixel;
-                buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
+
+                GameBackBuffer game_buffer {};
+                game_buffer.bitmap_mem = g_back_buffer.bitmap_mem;
+                game_buffer.bitmap_height = g_back_buffer.bitmap_height;
+                game_buffer.bitmap_width = g_back_buffer.bitmap_width;
+                game_buffer.bytes_per_pixel = g_back_buffer.bytes_per_pixel;
+                game_buffer.bitmap_pitch = g_back_buffer.bitmap_pitch;
 
                 win32_audio_lock_buffer(g_audio, sound_output, g_audio.frame_count_bytes);
                 game.fill_sound_output_buffer(thread, sound_output);
@@ -514,7 +514,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, PSTR cmd_line, int cmd_show
                     win32_playback_input(win32_state, new_input);
                 }
 
-                game.update_and_render(thread, memory, new_input, buffer);
+                game.update_and_render(thread, memory, new_input, game_buffer);
 
                 // GAME INPUT SWITCH
                 GameInput *temp = new_input;

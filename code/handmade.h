@@ -22,22 +22,22 @@ struct ThreadContext {
     int placeholder;
 };
 
-struct TileMap {
+struct TileChunk {
     uint32_t *tiles;
 };
 
 // This is still world space just being queried in a granular way
 struct TileChunkPosition {
-    uint32_t x;
-    uint32_t y;
-    float rel_tile_x;
-    float rel_tile_y;
+    uint32_t chunk_x;
+    uint32_t chunk_y;
+    float tile_x;
+    float tile_y;
 };
 
 struct WorldPosition {
     // the first 24 bits == tile map then lower 8 is tile
-    uint32_t tile_map_tile_x;
-    uint32_t tile_map_tile_y;
+    uint32_t tile_x; // acts like virtual addresses
+    uint32_t tile_y;
 
     // in meters relative to a tile
     float tile_rel_x;
@@ -46,7 +46,7 @@ struct WorldPosition {
 
 // tile maps will be stored sparsely to reduce memory waste
 struct WorldMap {
-    TileMap *tile_maps;
+    TileChunk *tile_chunks;
 
     int32_t tile_map_x_count; // how many tile maps across
     int32_t tile_map_y_count;
@@ -64,7 +64,7 @@ struct WorldMap {
     float meters_to_pixels;
 };
 
-struct BackgroundScreenBuffer {
+struct GameBackBuffer {
     void *bitmap_mem;
     int bitmap_height; // height of bitmap in pixels
     int bitmap_width; // width of bitmap in pixels
@@ -146,7 +146,7 @@ struct GameState {
 
 using ptr_game_fill_sound_output_buffer = void (*)(ThreadContext &, GameSoundOutput &);
 using ptr_game_update_and_render = void (*)(ThreadContext &, GameMemory &,
-    GameInput *, BackgroundScreenBuffer &);
+                                            GameInput *, GameBackBuffer &);
 
 #ifdef _WIN32
 #define DLL_EXPORT __declspec(dllexport)
@@ -160,7 +160,7 @@ extern "C" {
 
 DLL_EXPORT void game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &buffer);
 DLL_EXPORT void game_update_and_render(ThreadContext &thread, GameMemory &memory,
-    GameInput *input, BackgroundScreenBuffer &buffer);
+                                       GameInput *input, GameBackBuffer &buffer);
 
 #ifdef __cplusplus
 }

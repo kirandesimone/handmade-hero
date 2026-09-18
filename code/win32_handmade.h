@@ -12,7 +12,7 @@
 #include <winuser.h>
 
 
-struct Win32Buffer {
+struct Win32BackBuffer {
     BITMAPINFO bitmap_info;
     void *bitmap_mem;
     int bitmap_height;

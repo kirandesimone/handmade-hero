@@ -5,8 +5,44 @@
 #include "handmade.h"
 
 
+void
+game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_output)
+{
+    // tone_hz = roughly the hz(cycles per sec) for middle C
+    // wave_period = how many frames it takes to complete one whole cycle of the tone
+    // running_index_sample = allows us to run the tone infinitely without having a "pop" noise at
+    // the end of each completed wave
+    sound_output.wave_period = sound_output.samples_per_sec / sound_output.tone_hz;
+    float *region1_out = reinterpret_cast<float*>(sound_output.region1);
+    float *region2_out = reinterpret_cast<float*>(sound_output.region2);
+    float *frames_out = region1_out;
+    uint32_t free_frames = (sound_output.region1_size + sound_output.region2_size) / sound_output.frame_size;
+    uint32_t region1_size_frame_count = (sound_output.region1_size / sound_output.frame_size);
+    uint32_t region_index {};
+
+    // Write our sample data into the buffer
+    for (uint32_t frame_count {}; frame_count < free_frames; ++frame_count) {
+        // Square Wave
+        // float sample_value = (running_sample_index++ % wave_period < wave_period / 2) ? volume : -volume;
+        float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
+        float frame_value = sinf(t) * sound_output.volume;
+        sound_output.running_frame_index++;
+        region_index = frame_count;
+
+        if (frame_count >= region1_size_frame_count) {
+            frames_out = region2_out;
+            region_index = frame_count - region1_size_frame_count;
+        }
+
+        for (uint32_t channel {}; channel < sound_output.channel_count; ++channel) {
+            frames_out[region_index * sound_output.channel_count + channel] = frame_value;
+        }
+    }
+}
+
+
 static void
-game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t y_offset)
+game_render_gradient(GameBackBuffer &buffer, uint32_t x_offset, uint32_t y_offset)
 {
     uint8_t *row = reinterpret_cast<uint8_t *>(buffer.bitmap_mem);
     for (int32_t y = 0; y < buffer.bitmap_height; ++y) {
@@ -25,9 +61,8 @@ game_render_gradient(BackgroundScreenBuffer &buffer, uint32_t x_offset, uint32_t
 }
 
 
-
 static void
-game_draw_rectangle(BackgroundScreenBuffer &buffer,
+game_draw_rectangle(GameBackBuffer &buffer,
     float fmin_x, float fmin_y, float fmax_x, float fmax_y,
     float red, float green, float blue)
 {
@@ -69,60 +104,27 @@ game_draw_rectangle(BackgroundScreenBuffer &buffer,
     }
 }
 
-void
-game_fill_sound_output_buffer(ThreadContext &thread, GameSoundOutput &sound_output)
-{
-    // tone_hz = roughly the hz(cycles per sec) for middle C
-    // wave_period = how many frames it takes to complete one whole cycle of the tone
-    // running_index_sample = allows us to run the tone infinitely without having a "pop" noise at
-    // the end of each completed wave
-    sound_output.wave_period = sound_output.samples_per_sec / sound_output.tone_hz;
-    float *region1_out = reinterpret_cast<float*>(sound_output.region1);
-    float *region2_out = reinterpret_cast<float*>(sound_output.region2);
-    float *frames_out = region1_out;
-    uint32_t free_frames = (sound_output.region1_size + sound_output.region2_size) / sound_output.frame_size;
-    uint32_t region1_size_frame_count = (sound_output.region1_size / sound_output.frame_size);
-    uint32_t region_index {};
-
-    // Write our sample data into the buffer
-    for (uint32_t frame_count {}; frame_count < free_frames; ++frame_count) {
-        // Square Wave
-        // float sample_value = (running_sample_index++ % wave_period < wave_period / 2) ? volume : -volume;
-        float t = ((2.0f * PI32) * sound_output.running_frame_index) / sound_output.wave_period;
-        float frame_value = sinf(t) * sound_output.volume;
-        sound_output.running_frame_index++;
-        region_index = frame_count;
-
-        if (frame_count >= region1_size_frame_count) {
-            frames_out = region2_out;
-            region_index = frame_count - region1_size_frame_count;
-        }
-
-        for (uint32_t channel {}; channel < sound_output.channel_count; ++channel) {
-            frames_out[region_index * sound_output.channel_count + channel] = frame_value;
-        }
-    }
-}
 
 inline static uint32_t
-get_tile_map_tile(WorldMap &world_map, TileMap *tile_map, int32_t x, int32_t y)
+get_tile_chunk_tile(WorldMap &world_map, TileChunk *tile_chunk, int32_t x, int32_t y)
 {
-    return tile_map->tiles[y * world_map.tile_chunk_size + x];
+    return tile_chunk->tiles[y * world_map.tile_chunk_size + x];
 }
 
-inline static TileMap*
-get_tile_map(WorldMap &world_map, int32_t x, int32_t y)
+inline static TileChunk*
+get_tile_chunk(WorldMap &world_map, int32_t x, int32_t y)
 {
-    TileMap *tile_map = nullptr;
+    TileChunk *tile_chunk = nullptr;
 
     if ((x >= 0 && x < world_map.tile_map_x_count) &&
         y >= 0 && y < world_map.tile_map_y_count)
     {
-        tile_map = &world_map.tile_maps[y * world_map.tile_map_y_count + x];
+        tile_chunk = &world_map.tile_chunks[y * world_map.tile_map_y_count + x];
     }
 
-    return tile_map;
+    return tile_chunk;
 }
+
 
 inline void
 normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
@@ -136,49 +138,48 @@ normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
 static void
 normalize_world_position(WorldMap &world_map, WorldPosition &pos)
 {
-    normalize_coordinate(world_map, pos.tile_map_tile_x, pos.tile_rel_x);
-    normalize_coordinate(world_map, pos.tile_map_tile_y, pos.tile_rel_y);
+    normalize_coordinate(world_map, pos.tile_x, pos.tile_rel_x);
+    normalize_coordinate(world_map, pos.tile_y, pos.tile_rel_y);
 }
+
 
 // this unpacks the tile map and tile from tile_map_tile_x/y
 // maybe change to unpack_world_position??
 inline static TileChunkPosition
-get_tile_chunk_position(WorldMap &world_map, uint32_t tile_map_tile_x, uint32_t tile_map_tile_y)
+unpack_tile_chunk_position(WorldMap &world_map, uint32_t tile_map_tile_x, uint32_t tile_map_tile_y)
 {
     TileChunkPosition tile_chunk {};
-    tile_chunk.x = tile_map_tile_x >> world_map.chunk_shift;
-    tile_chunk.y = tile_map_tile_y >> world_map.chunk_shift;
-    tile_chunk.rel_tile_x = tile_map_tile_x & world_map.chunk_mask;
-    tile_chunk.rel_tile_y = tile_map_tile_y & world_map.chunk_mask;
+    tile_chunk.chunk_x = tile_map_tile_x >> world_map.chunk_shift;
+    tile_chunk.chunk_y = tile_map_tile_y >> world_map.chunk_shift;
+    tile_chunk.tile_x = tile_map_tile_x & world_map.chunk_mask;
+    tile_chunk.tile_y = tile_map_tile_y & world_map.chunk_mask;
 
     return tile_chunk;
 }
+
 
 static bool
 is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
 {
     bool is_valid = false;
-    TileChunkPosition tile_chunk = get_tile_chunk_position(
-        world_map, world_pos.tile_map_tile_x, world_pos.tile_map_tile_y);
+    TileChunkPosition tile_chunk_pos = unpack_tile_chunk_position(
+        world_map,world_pos.tile_x, world_pos.tile_y);
 
-    TileMap *tile_map = get_tile_map(world_map, tile_chunk.rel_tile_x, tile_chunk.rel_tile_y);
+    TileChunk *tile_chunk = get_tile_chunk(world_map, tile_chunk_pos.chunk_x, tile_chunk_pos.chunk_y);
 
-    if (tile_map) {
-        if ((tile_chunk.rel_tile_x >= 0 && tile_chunk.rel_tile_x < world_map.tile_chunk_size) &&
-            tile_chunk.rel_tile_y >= 0 && tile_chunk.rel_tile_y < world_map.tile_chunk_size)
-        {
-            uint32_t tile_id = get_tile_map_tile(
-                world_map, tile_map,world_pos.tile_x, world_pos.tile_y);
-            is_valid = (tile_id == 0);
-        }
+    if (tile_chunk) {
+        uint32_t tile_id = get_tile_chunk_tile(world_map, tile_chunk,
+            tile_chunk_pos.tile_x, tile_chunk_pos.tile_y);
+        is_valid = (tile_id == 0);
     }
 
     return is_valid;
 }
 
+
 void
 game_update_and_render(ThreadContext &thread, GameMemory &memory,
-    GameInput *input, BackgroundScreenBuffer &buffer)
+    GameInput *input, GameBackBuffer &buffer)
 {
     GameState *game_state = reinterpret_cast<GameState*>(memory.persistent_storage);
     if (!memory.is_initialized) {
@@ -186,8 +187,6 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         game_state->player_pos.tile_rel_y = 0.8f;
         game_state->player_pos.tile_x = 3;
         game_state->player_pos.tile_y = 2;
-        game_state->player_pos.tile_map_x = 0;
-        game_state->player_pos.tile_map_y = 0;
 
         memory.is_initialized = true;
     }
@@ -201,52 +200,25 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     constexpr float screen_offset_x = 10.0f;
     float screen_offset_y = (float)buffer.bitmap_height;
 
-    uint32_t tiles00[tile_map_height][tile_map_width] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
-        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1}
-    };
-
-    uint32_t tiles01[tile_map_height][tile_map_width] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
-        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1}
-    };
-
-    uint32_t tiles10[tile_map_height][tile_map_width] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
-        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1}
-    };
-
-    uint32_t tiles11[tile_map_height][tile_map_width] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
-        {0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
-        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
-        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1}
+    uint32_t tiles00[tile_chunk_size][tile_chunk_size] = {
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1, 1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1, 1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1, 1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1, 1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1, 1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1, 1, 0, 1, 0,  0, 1, 0, 0,  0, 1, 0, 0,  1, 1, 0, 0,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1, 1, 0, 1, 1,  0, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 1, 0, 1,  1, 1, 1, 0,  0, 0, 0, 0,  1},
+        {1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1, 1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  1},
+        {1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1, 1, 0, 1, 0,  0, 1, 1, 1,  0, 0, 0, 0,  0, 0, 0, 1,  1},
+        {1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1, 1, 0, 1, 1,  0, 1, 0, 0,  0, 1, 0, 0,  0, 0, 1, 1,  1},
+        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1},
     };
 
     WorldMap world_map {
@@ -255,21 +227,17 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         .screen_offset_x = screen_offset_x,
         .screen_offset_y = screen_offset_y,
         .tile_chunk_size = tile_chunk_size,
-        .chunk_mask = 0xFF,
+        .chunk_mask = 0xFF, // 256 x 256 chunk sizes
         .chunk_shift = 8,
         .tile_pixel_length = tile_pixel_length,
         .tile_meter_length = tile_meter_length,
         .meters_to_pixels = tile_pixel_length / tile_meter_length,
     };
 
-    TileMap tile_maps[tile_map_x_count][tile_map_y_count];
+    TileChunk tile_chunks[1][1];
 
-    tile_maps[0][0].tiles = *tiles00; // access it as a 1-D array instead as 2-D (same as accessing the back buffer)
-    tile_maps[0][1].tiles = *tiles01;
-    tile_maps[1][0].tiles = *tiles10;
-    tile_maps[1][1].tiles = *tiles11;
-
-    world_map.tile_maps = *tile_maps;
+    tile_chunks[0][0].tiles = *tiles00; // access it as a 1-D array instead as 2-D (same as accessing the back buffer)
+    world_map.tile_chunks = *tile_chunks;
 
     float player_width = 0.75f * world_map.tile_meter_length;
     float player_height = world_map.tile_meter_length;
@@ -327,7 +295,7 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         }
     }
 
-    TileMap *tile_map = get_tile_map(world_map,
+    TileChunk *tile_chunk = get_tile_chunk(world_map,
         game_state->player_pos.tile_map_x, game_state->player_pos.tile_map_y);
 
     game_draw_rectangle(
