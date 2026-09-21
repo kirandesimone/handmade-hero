@@ -30,12 +30,12 @@ struct TileChunk {
 struct TileChunkPosition {
     uint32_t chunk_x;
     uint32_t chunk_y;
-    float tile_x;
-    float tile_y;
+    uint32_t tile_x;
+    uint32_t tile_y;
 };
 
 struct WorldPosition {
-    // the first 24 bits == tile map then lower 8 is tile
+    // the first 24 bits == tile chunk then lower 8 is tile within tile chunk
     uint32_t tile_x; // acts like virtual addresses
     uint32_t tile_y;
 

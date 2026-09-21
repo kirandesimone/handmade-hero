@@ -63,28 +63,28 @@ game_render_gradient(GameBackBuffer &buffer, uint32_t x_offset, uint32_t y_offse
 
 static void
 game_draw_rectangle(GameBackBuffer &buffer,
-    float fmin_x, float fmin_y, float fmax_x, float fmax_y,
+    float left, float right, float top, float bottom,
     float red, float green, float blue)
 {
-    int32_t min_x = floor_float(fmin_x);
-    int32_t max_x = floor_float(fmax_x);
-    int32_t min_y = floor_float(fmin_y);
-    int32_t max_y = floor_float(fmax_y);
+    int32_t left_x = floor_float(left);
+    int32_t right_x = floor_float(right);
+    int32_t top_y = floor_float(top);
+    int32_t bottom_y = floor_float(bottom);
 
-    if (min_x < 0) {
-        min_x = 0;
+    if (left_x < 0) {
+        left_x = 0;
     }
 
-    if (max_x >= buffer.bitmap_width) {
-        max_x = buffer.bitmap_width;
+    if (right_x >= buffer.bitmap_width) {
+        right_x = buffer.bitmap_width;
     }
 
-    if (min_y < 0) {
-        min_y = 0;
+    if (top_y < 0) {
+        top_y = 0;
     }
 
-    if (max_y >= buffer.bitmap_height) {
-        max_y = buffer.bitmap_height;
+    if (bottom_y >= buffer.bitmap_height) {
+        bottom_y = buffer.bitmap_height;
     }
 
     uint32_t color = (uint32_t)((floor_float(red * 255.0f) << 16) |
@@ -92,56 +92,17 @@ game_draw_rectangle(GameBackBuffer &buffer,
                                 (floor_float(blue * 255.0f)));
 
     uint8_t *pixel_addr = ((uint8_t*)buffer.bitmap_mem +
-        (min_x * buffer.bytes_per_pixel) +
-        (min_y * buffer.bitmap_pitch));
+        (left_x * buffer.bytes_per_pixel) +
+        (top_y * buffer.bitmap_pitch));
 
-    for (int32_t y {min_y}; y < max_y; ++y) {
+    for (int32_t y {top_y}; y < bottom_y; ++y) {
         uint32_t *pixel = (uint32_t*)pixel_addr;
-        for (int32_t x {min_x}; x < max_x; ++x) {
+        for (int32_t x {left_x}; x < right_x; ++x) {
             *pixel++ = color;
         }
         pixel_addr += buffer.bitmap_pitch;
     }
 }
-
-
-inline static uint32_t
-get_tile_chunk_tile(WorldMap &world_map, TileChunk *tile_chunk, int32_t x, int32_t y)
-{
-    return tile_chunk->tiles[y * world_map.tile_chunk_size + x];
-}
-
-inline static TileChunk*
-get_tile_chunk(WorldMap &world_map, int32_t x, int32_t y)
-{
-    TileChunk *tile_chunk = nullptr;
-
-    if ((x >= 0 && x < world_map.tile_map_x_count) &&
-        y >= 0 && y < world_map.tile_map_y_count)
-    {
-        tile_chunk = &world_map.tile_chunks[y * world_map.tile_map_y_count + x];
-    }
-
-    return tile_chunk;
-}
-
-
-inline void
-normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
-{
-    // assuming that our world is toroidal topology which allows us to not care if tile wraps
-    int32_t tile_offset = floor_float(tile_rel_pos / world_map.tile_meter_length);
-    tile += tile_offset;
-    tile_rel_pos -= tile_offset * world_map.tile_meter_length;
-}
-
-static void
-normalize_world_position(WorldMap &world_map, WorldPosition &pos)
-{
-    normalize_coordinate(world_map, pos.tile_x, pos.tile_rel_x);
-    normalize_coordinate(world_map, pos.tile_y, pos.tile_rel_y);
-}
-
 
 // this unpacks the tile map and tile from tile_map_tile_x/y
 // maybe change to unpack_world_position??
@@ -158,20 +119,71 @@ unpack_tile_chunk_position(WorldMap &world_map, uint32_t tile_map_tile_x, uint32
 }
 
 
+inline static TileChunk*
+get_tile_chunk(WorldMap &world_map, int32_t x, int32_t y)
+{
+    TileChunk *tile_chunk = nullptr;
+
+    if ((x >= 0 && x < world_map.tile_map_x_count) &&
+        y >= 0 && y < world_map.tile_map_y_count)
+    {
+        tile_chunk = &world_map.tile_chunks[y * world_map.tile_map_y_count + x];
+    }
+
+    return tile_chunk;
+}
+
+
+inline static int32_t
+get_tile_chunk_tile(WorldMap &world_map, TileChunk *tile_chunk, int32_t x, int32_t y)
+{
+    int32_t tile_value {-1};
+
+    if (tile_chunk) {
+        tile_value = tile_chunk->tiles[y * world_map.tile_chunk_size + x];
+    }
+
+    return tile_value;
+}
+
+
+static int32_t
+get_tile_chunk_tile(WorldMap &world_map, uint32_t x, uint32_t y)
+{
+    TileChunkPosition tile_chunk_pos = unpack_tile_chunk_position(world_map, x, y);
+    TileChunk *tile_chunk = get_tile_chunk(world_map, tile_chunk_pos.chunk_x, tile_chunk_pos.chunk_y);
+
+    int32_t tile_id = get_tile_chunk_tile(world_map, tile_chunk,
+        tile_chunk_pos.tile_x, tile_chunk_pos.tile_y);
+
+    return tile_id;
+}
+
+
+inline void
+normalize_coordinate(WorldMap &world_map, uint32_t &tile, float &tile_rel_pos)
+{
+    // assuming that our world is toroidal topology which allows us to not care if tile wraps
+    int32_t tile_offset = floor_float(tile_rel_pos / world_map.tile_meter_length);
+    tile += tile_offset;
+    tile_rel_pos -= tile_offset * world_map.tile_meter_length;
+}
+
+
+static void
+normalize_world_position(WorldMap &world_map, WorldPosition &pos)
+{
+    normalize_coordinate(world_map, pos.tile_x, pos.tile_rel_x);
+    normalize_coordinate(world_map, pos.tile_y, pos.tile_rel_y);
+}
+
+
 static bool
 is_world_map_coordinate_valid(WorldMap &world_map, WorldPosition &world_pos)
 {
     bool is_valid = false;
-    TileChunkPosition tile_chunk_pos = unpack_tile_chunk_position(
-        world_map,world_pos.tile_x, world_pos.tile_y);
-
-    TileChunk *tile_chunk = get_tile_chunk(world_map, tile_chunk_pos.chunk_x, tile_chunk_pos.chunk_y);
-
-    if (tile_chunk) {
-        uint32_t tile_id = get_tile_chunk_tile(world_map, tile_chunk,
-            tile_chunk_pos.tile_x, tile_chunk_pos.tile_y);
-        is_valid = (tile_id == 0);
-    }
+    int32_t tile_id = get_tile_chunk_tile(world_map, world_pos.tile_x, world_pos.tile_y);
+    is_valid = (tile_id == 0);
 
     return is_valid;
 }
@@ -192,12 +204,12 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     }
 
     // Don't know if these are contsexpr since the function isn't
-    constexpr int32_t tile_map_x_count = 2;
-    constexpr int32_t tile_map_y_count = 2;
+    constexpr int32_t tile_map_x_count = 1;
+    constexpr int32_t tile_map_y_count = 1;
     constexpr int32_t tile_chunk_size = 256;
-    constexpr float tile_pixel_length = 56.0f;
+    constexpr float tile_pixel_length = 60.0f;
     constexpr float tile_meter_length = 1.4f;
-    constexpr float screen_offset_x = 10.0f;
+    constexpr float screen_offset_x = 0.0f;
     float screen_offset_y = (float)buffer.bitmap_height;
 
     uint32_t tiles00[tile_chunk_size][tile_chunk_size] = {
@@ -234,13 +246,13 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         .meters_to_pixels = tile_pixel_length / tile_meter_length,
     };
 
-    TileChunk tile_chunks[1][1];
+    TileChunk tile_chunks[tile_map_y_count][tile_map_x_count];
 
     tile_chunks[0][0].tiles = *tiles00; // access it as a 1-D array instead as 2-D (same as accessing the back buffer)
     world_map.tile_chunks = *tile_chunks;
 
     float player_width = 0.75f * world_map.tile_meter_length;
-    float player_height = world_map.tile_meter_length;
+    float player_height = world_map.tile_meter_length - 0.4f;
 
     GameControllerInput input0 = input->controllers[0];
     // analog is controller joy stick
@@ -295,9 +307,6 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         }
     }
 
-    TileChunk *tile_chunk = get_tile_chunk(world_map,
-        game_state->player_pos.tile_map_x, game_state->player_pos.tile_map_y);
-
     game_draw_rectangle(
         buffer,
         0.0f, 0.0f,
@@ -306,55 +315,70 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
     );
 
     // TILEMAP RENDERING
-    for (int32_t y {}; y < tile_map_height; ++y) {
-        for (int32_t x {}; x < tile_map_width; ++x) {
-            uint32_t tile_id = get_tile_map_tile(world_map, tile_map, x, y);
+    // NOTE: Scrolling happens when we only render tiles that are
+    // relative to the player position.
+    float center_x = 0.5f * buffer.bitmap_width;
+    float center_y = 0.5f * buffer.bitmap_height;
+
+    for (int32_t rel_y {-10}; rel_y < 10; ++rel_y) {
+        for (int32_t rel_x {-20}; rel_x < 20; ++rel_x) {
+            // underflow wrapping here
+            uint32_t y = game_state->player_pos.tile_y + rel_y;
+            uint32_t x = game_state->player_pos.tile_x + rel_x;
+            int32_t tile_id = get_tile_chunk_tile(world_map, x, y);
             float gray = 0.5f;
 
             if (tile_id == 1) {
                 gray = 1.0f;
             }
 
-            if (game_state->player_pos.tile_x  == x && game_state->player_pos.tile_y == y) {
+            if (game_state->player_pos.tile_x == x && game_state->player_pos.tile_y == y) {
                 gray = 0.0f;
             }
 
-            float min_x = world_map.screen_offset_x + (x * world_map.tile_pixel_length);
-            float min_y = world_map.screen_offset_y - (y * world_map.tile_pixel_length);
-            float max_x = min_x + world_map.tile_pixel_length;
-            float max_y = min_y + world_map.tile_pixel_length;
+            // For smooth scrolling we You moved the within-tile offsets out of the player drawing and into the tile drawing, with opposite signs:
+            // Walking right: tile_rel_x increases. Your tile left calculation subtracts that offset, so the map slides left.
+            // Walking up: tile_rel_y increases. Your tile top calculation adds that offset, so the map slides down.
+            float left = center_x
+                - (world_map.meters_to_pixels * game_state->player_pos.tile_rel_x)
+                + (rel_x * world_map.tile_pixel_length);
+            float top = center_y
+                + (world_map.meters_to_pixels * game_state->player_pos.tile_rel_y)
+                - (rel_y * world_map.tile_pixel_length);
+            float right = left + world_map.tile_pixel_length;
+            float bottom = top + world_map.tile_pixel_length;
 
             game_draw_rectangle(
                 buffer,
-                min_x, min_y,
-                max_x, max_y,
+                left, right,
+                top, bottom,
                 gray, gray, gray
             );
+
+            if (rel_x == 0) {
+                game_draw_rectangle(
+                    buffer,
+                    left, left + 5.0f,
+                    top, top + 5.0f,
+                    0.0f, 0.7f, 0.7f
+                );
+            }
         }
     }
 
-    // FOR DRAWING
-    float player_left_edge = (
-        world_map.screen_offset_x +
-        (world_map.tile_pixel_length * game_state->player_pos.tile_x) +
-        (world_map.meters_to_pixels * (game_state->player_pos.tile_rel_x -
-            0.5f * player_width))
-    );
+    // lock the player drawing to the anchor point (center) for the smooth scrolling
+    float player_left_edge = center_x - world_map.meters_to_pixels
+        * (0.5f * player_width);
 
-    float player_top_edge = (
-        world_map.screen_offset_y -
-        (world_map.tile_pixel_length * game_state->player_pos.tile_y) -
-        (world_map.meters_to_pixels * game_state->player_pos.tile_rel_y) -
-        player_height
-    );
+    float player_bottom_edge = center_y + world_map.tile_pixel_length;
 
-    // player
+    // playera
     game_draw_rectangle(
         buffer,
         player_left_edge,
-        player_top_edge,
         player_left_edge + (player_width * world_map.meters_to_pixels),
-        player_top_edge + (player_height * world_map.meters_to_pixels),
+        player_bottom_edge - (player_height * world_map.meters_to_pixels),
+        player_bottom_edge,
         0.5f, 0.0f, 0.2f
     );
     /*
@@ -364,7 +388,6 @@ game_update_and_render(ThreadContext &thread, GameMemory &memory,
         game_state->player_pos.tile_rel_y - 5.0f,
         game_state->player_pos.tile_rel_x + 5.0f,
         game_state->player_pos.tile_rel_y + 5.0f,
-        0.0f, 0.7f, 0.7f
     );
     */
 }
