@@ -8,10 +8,10 @@ mkdir ..\build
 pushd ..\build
 
 if /I "%1" == "dll" (
-    cl %COMPILER_FLAGS% ..\code\handmade.cpp /LD
+    cl %COMPILER_FLAGS% ..\code\handmade.cpp ..\code\handmade_tile.cpp /LD
 ) else (
     del *
-    cl %COMPILER_FLAGS% ..\code\handmade.cpp /LD
+    cl %COMPILER_FLAGS% ..\code\handmade.cpp ..\code\handmade_tile.cpp /LD
     cl %COMPILER_FLAGS% ..\code\win32_handmade.cpp ..\code\win32_wasapi.cpp %LIBS%
 )
 

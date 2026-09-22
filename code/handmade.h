@@ -2,6 +2,7 @@
 #define HANDMADE_H
 
 #include "handmade_math.h"
+#include "handmade_tile.h"
 
 #include <cstdint>
 #include <cmath>
@@ -22,46 +23,10 @@ struct ThreadContext {
     int placeholder;
 };
 
-struct TileChunk {
-    uint32_t *tiles;
-};
-
-// This is still world space just being queried in a granular way
-struct TileChunkPosition {
-    uint32_t chunk_x;
-    uint32_t chunk_y;
-    uint32_t tile_x;
-    uint32_t tile_y;
-};
-
-struct WorldPosition {
-    // the first 24 bits == tile chunk then lower 8 is tile within tile chunk
-    uint32_t tile_x; // acts like virtual addresses
-    uint32_t tile_y;
-
-    // in meters relative to a tile
-    float tile_rel_x;
-    float tile_rel_y;
-};
-
-// tile maps will be stored sparsely to reduce memory waste
-struct WorldMap {
-    TileChunk *tile_chunks;
-
-    int32_t tile_map_x_count; // how many tile maps across
-    int32_t tile_map_y_count;
-
+struct World {
+    TileMap *tilemap;
     float screen_offset_x;
     float screen_offset_y;
-
-    int32_t tile_chunk_size; // how many tiles wide and tall a tile chunk is
-
-    uint32_t chunk_mask;
-    uint32_t chunk_shift;
-
-    float tile_pixel_length;
-    float tile_meter_length;
-    float meters_to_pixels;
 };
 
 struct GameBackBuffer {
@@ -140,7 +105,7 @@ struct GameMemory {
 };
 
 struct GameState {
-    WorldPosition player_pos;
+    TileMapPosition player_pos;
 };
 
 
